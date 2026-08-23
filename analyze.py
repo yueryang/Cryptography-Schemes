@@ -3,6 +3,8 @@ from os.path import abspath, basename, dirname, isdir, isfile, islink, join, spl
 from sys import argv, exit
 from getpass import getpass
 from io import BytesIO
+from math import isfinite
+from re import findall, fullmatch
 from time import sleep
 from zipfile import ZipFile
 try:
@@ -425,8 +427,144 @@ class Analyzer:
 		self.__outputFilePath = outputFilePath
 		self.__caseSensitive = caseSensitive is True
 	@staticmethod
+	def __escapeTEX(value:object, breakable:bool = False) -> str:
+		escapedValue = "\\textbackslash{}".join(
+			string.replace("#", "\\#").replace("$", "\\$").replace("%", "\\%").replace("&", "\\&")
+			.replace("_", "\\_").replace("{", "\\{").replace("}", "\\}")
+			.replace("<", "\\textless{}").replace(">", "\\textgreater{}")
+			.replace("^", "\\textasciicircum{}").replace("~", "\\textasciitilde{}")
+			for string in "".join(character for character in str(value) if ' ' <= character <= '~').split("\\")
+		)
+		if breakable is True:
+			escapedValue = escapedValue.replace("\\_", "\\_\\allowbreak{}").replace(".", ".\\allowbreak{}").replace("/", "/\\allowbreak{}")
+		return escapedValue
+	@staticmethod
 	def __checkValues(values:tuple|list) -> bool:
 		return isinstance(values, (tuple, list)) and values and all(isinstance(value, (int, float, str)) for value in values)
+	@staticmethod
+	def __formatTEXList(values:tuple|list) -> str:
+		valueStrings = tuple(str(value) for value in values)
+		if len(valueStrings) >= 3:
+			return ", ".join(valueStrings[:-1]) + ", and " + valueStrings[-1]
+		elif 2 == len(valueStrings):
+			return " and ".join(valueStrings)
+		elif 1 == len(valueStrings):
+			return valueStrings[0]
+		else:
+			return ""
+	@staticmethod
+	def __getOptimalValueIndexes(
+		mappings:dict, groupVariableIndex:int, runCountVariableIndex:int, dependentVariableIndexes:tuple|list
+	) -> set:
+		variables = tuple(mappings.keys())
+		comparisonVariableNames = tuple(
+			variableName for variableIndex, variableName in enumerate(variables[:runCountVariableIndex]) if variableIndex != groupVariableIndex
+		)
+		valueIndexGroups = {}
+		for valueIndex in range(len(next(iter(mappings.values())))):
+			valueIndexGroups.setdefault(
+				tuple(mappings[variableName][valueIndex] for variableName in comparisonVariableNames), []
+			).append(valueIndex)
+		optimalValueIndexes = set()
+		for valueIndexGroup in valueIndexGroups.values():
+			for dependentVariableIndex in dependentVariableIndexes:
+				dependentVariableName = variables[dependentVariableIndex]
+				numericValues = tuple(
+					(valueIndex, mappings[dependentVariableName][valueIndex]) for valueIndex in valueIndexGroup if (
+						isinstance(mappings[dependentVariableName][valueIndex], (int, float))
+						and not isinstance(mappings[dependentVariableName][valueIndex], bool)
+						and isfinite(float(mappings[dependentVariableName][valueIndex]))
+					)
+				)
+				if numericValues:
+					optimalValue = min(value for _, value in numericValues)
+					optimalValueIndexes.update(
+						(valueIndex, dependentVariableIndex) for valueIndex, value in numericValues if value == optimalValue
+					)
+		return optimalValueIndexes
+	@staticmethod
+	def __makeFigureCaption(fileName:str, variables:tuple|list) -> str:
+		match = fullmatch(r"x([0-9]+)y([0-9]+)((?:c[0-9]+)*)g([0-9]+)\.pdf", fileName)
+		if match is None:
+			return "The generated mapping figure."
+		independentVariableIndex, dependentVariableIndex, controlledVariableString, groupIndex = (
+			int(match.group(1)), int(match.group(2)), match.group(3), int(match.group(4))
+		)
+		controlledVariableIndexes = tuple(int(value) for value in findall(r"c([0-9]+)", controlledVariableString))
+		if not (
+			0 <= independentVariableIndex < len(variables) and 0 <= dependentVariableIndex < len(variables)
+			and all(0 <= controlledVariableIndex < len(variables) for controlledVariableIndex in controlledVariableIndexes)
+		):
+			return "The generated mapping figure."
+		caption = "The {0} group of the mapping from {1} to {2}".format(
+			groupIndex, Analyzer.__escapeTEX(variables[independentVariableIndex]), Analyzer.__escapeTEX(variables[dependentVariableIndex])
+		)
+		if controlledVariableIndexes:
+			caption += " with {0} fixed".format(Analyzer.__formatTEXList(tuple(
+				Analyzer.__escapeTEX(variables[controlledVariableIndex]) for controlledVariableIndex in controlledVariableIndexes
+			)))
+		return caption + "."
+	@staticmethod
+	def __makeMainTEX(
+		mappings:dict, groupVariableIndex:int, runCountVariableIndex:int, dependentVariableIndexes:tuple|list, fileNames:tuple|list
+	) -> str:
+		variables = tuple(mappings.keys())
+		optimalValueIndexes = Analyzer.__getOptimalValueIndexes(
+			mappings, groupVariableIndex, runCountVariableIndex, dependentVariableIndexes
+		)
+		lines = [
+			"\\documentclass[a4paper]{article}",
+			"\\setlength{\\parindent}{0pt}",
+			"\\usepackage[T1]{fontenc}",
+			"\\usepackage{array}",
+			"\\usepackage{graphicx}",
+			"\\usepackage{longtable}",
+			"\\usepackage{textcomp}",
+			"",
+			"\\begin{document}",
+			"",
+			"\\section*{Mappings}",
+			"Bold metric values are optimal among records whose non-group query values are identical; ties are all bold.",
+			"",
+			"\\begin{longtable}{@{}r>{\\raggedright\\arraybackslash}p{0.86\\textwidth}@{}}",
+			"\\hline",
+			"\\textbf{Record} & \\textbf{Mapping} \\\\",
+			"\\hline",
+			"\\endfirsthead",
+			"\\hline",
+			"\\textbf{Record} & \\textbf{Mapping} \\\\",
+			"\\hline",
+			"\\endhead",
+			"\\hline",
+			"\\endfoot",
+		]
+		for valueIndex in range(len(next(iter(mappings.values())))):
+			mappingStrings = []
+			for variableIndex, variableName in enumerate(variables):
+				value = mappings[variableName][valueIndex]
+				valueString = Analyzer.__escapeTEX(value, breakable = isinstance(value, str))
+				if (valueIndex, variableIndex) in optimalValueIndexes:
+					valueString = "\\textbf{{{0}}}".format(valueString)
+				mappingStrings.append("\\texttt{{{0}}} = {1}".format(Analyzer.__escapeTEX(variableName), valueString))
+			lines.append("{0} & {1} \\\\".format(valueIndex + 1, ";\\allowbreak ".join(mappingStrings)))
+		lines.extend((
+			"\\end{longtable}",
+			"",
+			"\\newpage",
+			"\\section*{Figures}",
+		))
+		for fileName in fileNames:
+			lines.extend((
+				"\\begin{figure}[htbp]",
+				"\\centering",
+				"\\includegraphics[width=\\linewidth]{{{0}}}".format(Analyzer.__escapeTEX(fileName)),
+				"\\caption{{{0}}}".format(Analyzer.__makeFigureCaption(fileName, variables)),
+				"\\label{{fig:{0}}}".format(Analyzer.__escapeTEX(splitext(fileName)[0])),
+				"\\end{figure}",
+				"",
+			))
+		lines.append("\\end{document}")
+		return "\n".join(lines)
 	def analyze(self:object) -> bool|dict|BaseException:
 		mappings = Loader.load(self.__inputFilePath, caseSensitive = self.__caseSensitive)
 		if isinstance(mappings, BaseException):
@@ -471,12 +609,19 @@ class Analyzer:
 					if isinstance(byteMappings, dict):
 						__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
 						compressionMappings = {}
+						pdfMappings = {}
+						for key, value in byteMappings.items():
+							if isinstance(key, str) and isinstance(value, bytes):
+								fileName = key if ".pdf" == __getFileExtension(key) else key + ".pdf"
+								pdfMappings[fileName] = value
+							else:
+								compressionMappings[key] = value
 						with ZipFile(self.__outputFilePath if ".zip" == __getFileExtension(self.__outputFilePath) else self.__outputFilePath + ".zip", "w") as zf:
-							for key, value in byteMappings.items():
-								if isinstance(key, str) and isinstance(value, bytes):
-									zf.writestr(key if ".pdf" == __getFileExtension(key) else key + ".pdf", value)
-								else:
-									compressionMappings[key] = value
+							for fileName, value in pdfMappings.items():
+								zf.writestr(fileName, value)
+							zf.writestr("main.tex", Analyzer.__makeMainTEX(
+								mappings, groupVariableIndex, runCountVariableIndex, dependentVariableIndexes, tuple(pdfMappings.keys())
+							))
 						return compressionMappings if compressionMappings else True
 					else:
 						return byteMappings
