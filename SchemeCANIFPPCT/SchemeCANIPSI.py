@@ -57,7 +57,7 @@ class Parser:
 			return ""
 	@staticmethod
 	def __printHelp() -> None:
-		print("This is the official implementation of the CA-NI-PSI cryptographic scheme in the Python programming language based on the Python Charm-Crypto framework. ")
+		print("This is a possible implementation of the CA-NI-PSI cryptographic scheme in the Python programming language based on the Python Charm-Crypto framework. ")
 		print()
 		print("Options (case-insensitive): ")
 		print("\t{0} [utf-8|utf-16|...]\t\tSpecify the encoding mode for CSV and TXT outputs. The default value is {1}. ".format(

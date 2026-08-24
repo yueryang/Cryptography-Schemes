@@ -47,12 +47,12 @@ class Parser:
 		print("This is the official cryptographic scheme LaTeX and PDF builder. ")
 		print()
 		print("Options (case-insensitive): ")
-		print("\t{0}\t\tIndicate that all the subsequent arguments are file paths. ".format(Parser.__formatOption(Parser.__OptionDelimiter)))
+		print("\t{0}\t\tIndicate that all the following arguments are independent input paths. ".format(Parser.__formatOption(Parser.__OptionDelimiter)))
 		print("\t{0}\t\tPrint this help document. ".format(Parser.__formatOption(Parser.__OptionHelp)))
 		print((
-			"\t{0} <output>\t\tSpecify the output path without an extension, which can be a format string, "
+			"\t{0} <output>\t\tSpecify the output file path without an extension, which can be a format string, "
 			+ "where %%, %d, %n, %p, %x stand for the %, Drive letter (if applicable), main file Name, directory Path, and eXtension, respectively. The default value is {1}. "
-		).format(Parser.__formatOption(Parser.__OptionOutput), Parser.__DefaultOutput))
+		).format(Parser.__formatOption(Parser.__OptionOutput), repr(Parser.__DefaultOutput)))
 		print("\t{0} [s|ms|microsecond|ns|ps|0|3|6|9|12|...]\t\tSpecify the decimal place, which should be a non-negative integer. The default value is {1}. ".format(
 			Parser.__formatOption(Parser.__OptionPlace), Parser.__DefaultPlace
 		))
@@ -349,10 +349,9 @@ class Builder:
 				Builder.__GenerationDiagnostics["Function"].append(string)
 			return True
 		elif string in (
-			"Basic: Failed to initialize the curve with name {0} due to {1}. ", "Basic: {0} failed on {1} due to {2}. ", 
+			"Basic: Failed to initialize the curve with name {0} due to {1}. ", "Basic: {0} failed on {1} due to {2}. ", "Curve names: {0}", 
 			"Device: Failed to parse {0} due to {1}. ", "Device: Failed to patch {0} with {1} due to {2}. ", "Device: {0} failed on {1} due to {2}. ", 
-			"Is the scheme correct? {0}. ", "Time: {0}", "curveName: {0}", "curveNames: {0}", "one: {0}", "runCount: {0}", 
-			"scheme: base", "scheme: {0}", "solution: {0}"
+			"Is the scheme correct? {0}. ", "Scheme: {0}", "Time: {0}", "one: {0}", "runCount: {0}", "solution: {0}"
 		):
 			return True
 		elif not functionName:

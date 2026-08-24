@@ -1,6 +1,7 @@
 from os import chdir, makedirs, name, walk
 from os.path import abspath, basename, dirname, isdir, isfile, islink, join, split, splitdrive, splitext
 from sys import argv, exit
+from ast import literal_eval
 from getpass import getpass
 from io import BytesIO
 from time import sleep
@@ -23,6 +24,7 @@ class Parser:
 	__DefaultPlace = 9
 	__PlaceTranslations = {"s":0, "second":0, "ms":3, "millisecond":3, "microsecond":6, "ns":9, "nanosecond":9, "ps":12, "picosecond":12, "fs":15, "femtosecond":15}
 	__OptionTime = ("t", "/t", "-t", "time", "/time", "--time")
+	__OptionUnit = ("u", "/u", "-u", "unit", "/unit", "--unit")
 	__DefaultTime = float("inf")
 	__tcgetattr = None
 	__OriginalConsoleAttributes = None
@@ -40,15 +42,15 @@ class Parser:
 			return ""
 	@staticmethod
 	def __printHelp() -> None:
-		print("This is the official cryptographic scheme drawer. ")
+		print("This is the official cryptographic scheme performance analyzer. ")
 		print()
 		print("Options (case-insensitive): ")
-		print("\t{0}\t\tIndicate that all the subsequent arguments are file paths. ".format(Parser.__formatOption(Parser.__OptionDelimiter)))
+		print("\t{0}\t\tIndicate that all the following arguments are independent input paths. ".format(Parser.__formatOption(Parser.__OptionDelimiter)))
 		print("\t{0}\t\tPrint this help document. ".format(Parser.__formatOption(Parser.__OptionHelp)))
 		print((
-			"\t{0} <output>\t\tSpecify the output path without an extension, which can be a format string, "
+			"\t{0} <output>\t\tSpecify the output file path without an extension, which can be a format string, "
 			+ "where %%, %d, %n, %p, %x stand for the %, Drive letter (if applicable), main file Name, directory Path, and eXtension, respectively. The default value is {1}. "
-		).format(Parser.__formatOption(Parser.__OptionOutput), Parser.__DefaultOutput))
+		).format(Parser.__formatOption(Parser.__OptionOutput), repr(Parser.__DefaultOutput)))
 		print("\t{0} [s|ms|microsecond|ns|ps|0|3|6|9|12|...]\t\tSpecify the decimal place, which should be a non-negative integer. The default value is {1}. ".format(
 			Parser.__formatOption(Parser.__OptionPlace), Parser.__DefaultPlace
 		))
@@ -56,6 +58,10 @@ class Parser:
 			"\t{0} [0|0.1|1|10|...|inf]\t\tSpecify the waiting time before exiting, which should be non-negative. ".format(Parser.__formatOption(Parser.__OptionTime))
 			+ "Passing inf requires users to manually press the Enter key before exiting. The default value is {0}. ".format(Parser.__DefaultTime)
 		)
+		print((
+			"\t{0}\t\tSpecify a processing unit using a Python dictionary containing the keys \"i\" and \"o\", "
+			+ "in which the value for \"i\" can be a string, a tuple, or a list, and the value for \"o\" should be a string. "
+		).format(Parser.__formatOption(Parser.__OptionUnit)))
 		print()
 	@staticmethod
 	def __parseRealNumber(string:str) -> int|float|None:
@@ -118,12 +124,12 @@ class Parser:
 	@staticmethod
 	def parse(args:tuple|list) -> tuple:
 		arguments = tuple(argument for argument in args if isinstance(argument, str)) if isinstance(args, (tuple, list)) else ()
-		flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, paths = max(EXIT_SUCCESS, EOF) + 1, Parser.__DefaultOutput, Parser.__DefaultPlace, Parser.__DefaultTime, []
+		flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = max(EXIT_SUCCESS, EOF) + 1, Parser.__DefaultOutput, Parser.__DefaultPlace, Parser.__DefaultTime, []
 		index, argumentCount, nonOptionMode, buffers = 1, len(arguments), False, []
 		while index < argumentCount:
 			argument = arguments[index].lower()
 			if nonOptionMode:
-				paths.append(arguments[index])
+				units.append(arguments[index])
 			elif argument in Parser.__OptionDelimiter:
 				nonOptionMode = True
 			elif argument in Parser.__OptionHelp:
@@ -173,13 +179,29 @@ class Parser:
 				else:
 					flag = EOF
 					buffers.append("Parser: The value for the waiting time option is missing at [{0}]. ".format(index))
+			elif argument in Parser.__OptionUnit:
+				index += 1
+				if index < argumentCount:
+					try:
+						unit = literal_eval(arguments[index])
+						if isinstance(unit, dict) and "i" in unit and "o" in unit:
+							units.append(unit)
+						else:
+							buffers.append("Parser: The value [{0}] = {1} for the unit option should be a Python dictionary containing the keys \"i\" and \"o\". ".format(
+								index, repr(arguments[index])
+							))
+					except BaseException as e:
+						buffers.append("Parser: The value [{0}] = {1} for the unit option cannot be literally evaluated due to {2}. ".format(index, repr(arguments[index]), repr(e)))
+				else:
+					flag = EOF
+					buffers.append("Parser: The value for the unit option is missing at [{0}]. ".format(index))
 			else:
-				paths.append(argument)
+				paths.append(arguments[index])
 			index += 1
 		if EOF == flag:
 			for buffer in buffers:
 				print(buffer)
-		return (flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, paths)
+		return (flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units)
 	@staticmethod
 	def disableConsoleEchoes() -> bool:
 		if "posix" == name:
@@ -216,7 +238,7 @@ class Loader:
 	__read_csv = None
 	__read_excel = None
 	@staticmethod
-	def load(inputFilePath:str, caseSensitive:bool = False) -> dict|BaseException|None: # {"x":[1, 2, 3], "y":[1, 4, 9]}
+	def load(inputFilePath:str, caseSensitive:bool = False) -> dict|BaseException: # {"x":[1, 2, 3], "y":[1, 4, 9]}
 		try:
 			originalExtension = splitext(inputFilePath)[1]
 			extension = originalExtension.lower() if caseSensitive is not True else originalExtension
@@ -275,11 +297,12 @@ class Drawer:
 						isinstance(curve, dict) and "x" in curve and Drawer.__checkNumbers(curve["x"])
 						and "y" in curve and Drawer.__checkNumbers(curve["y"]) and len(curve["x"]) == len(curve["y"])
 					):
+						x, y = zip(*sorted(zip(curve["x"], curve["y"]))) # sort $x$ and $y$ by ascending $x$ values
 						keywordArguments = {key:value for key, value in curve.items() if key in ("color", "marker", "label")}
 						try:
-							Drawer.__plt.plot(curve["x"], curve["y"], **keywordArguments)
+							Drawer.__plt.plot(x, y, **keywordArguments)
 						except Exception:
-							Drawer.__plt.plot(curve["x"], curve["y"])
+							Drawer.__plt.plot(x, y)
 				if isinstance(xLabelName, str):
 					Drawer.__plt.xlabel(xLabelName, fontsize = Drawer.__LabelFontSize)
 				if isinstance(yLabelName, str):
@@ -297,7 +320,7 @@ class Drawer:
 		except BaseException as e:
 			return e
 	@staticmethod
-	def drawMappings(mappings:dict, independentVariables:tuple|list, dependentVariables:tuple|list, groupVariables:tuple|list) -> dict|BaseException:
+	def drawMappings(mappings:dict, independentVariables:tuple|list, dependentVariables:tuple|list, groupingVariables:tuple|list) -> dict|BaseException:
 		if isinstance(mappings, dict) and all(isinstance(key, str) and Drawer.__checkValues(value) for key, value in mappings.items()) and len(set(len(value) for value in mappings.values())) == 1:
 			variables = tuple(mappings.keys())
 			variableLength = len(variables)
@@ -329,18 +352,18 @@ class Drawer:
 				variableName = __getVariableName(dependentVariables)
 				if isinstance(variableName, str):
 					dependentVariableNames.append(variableName)
-			groupVariableNames = []
-			if isinstance(groupVariables, (tuple, list)):
-				for groupVariable in groupVariables:
-					variableName = __getVariableName(groupVariable)
+			groupingVariableNames = []
+			if isinstance(groupingVariables, (tuple, list)):
+				for groupingVariable in groupingVariables:
+					variableName = __getVariableName(groupingVariable)
 					if isinstance(variableName, str):
-						groupVariableNames.append(variableName)
+						groupingVariableNames.append(variableName)
 			else:
-				variableName = __getVariableName(groupVariables)
+				variableName = __getVariableName(groupingVariables)
 				if isinstance(variableName, str):
-					groupVariableNames.append(variableName)
+					groupingVariableNames.append(variableName)
 			del __getVariableName
-			if independentVariableNames and dependentVariableNames and groupVariableNames:
+			if independentVariableNames and dependentVariableNames and groupingVariableNames:
 				seenVariableNames = set()
 				for independentVariableName in independentVariableNames:
 					if independentVariableName in seenVariableNames:
@@ -352,11 +375,11 @@ class Drawer:
 						return ValueError("The dependent variable {0} is repeated. ".format(repr(dependentVariableName)))
 					else:
 						seenVariableNames.add(dependentVariableName)
-				for groupVariableName in groupVariableNames:
-					if groupVariableName in seenVariableNames:
-						return ValueError("The group variable {0} is repeated. ".format(repr(groupVariableName)))
+				for groupingVariableName in groupingVariableNames:
+					if groupingVariableName in seenVariableNames:
+						return ValueError("The group variable {0} is repeated. ".format(repr(groupingVariableName)))
 					else:
-						seenVariableNames.add(groupVariableName)
+						seenVariableNames.add(groupingVariableName)
 				del seenVariableNames
 				if Drawer.__plt is None:
 					configurationStatus = Drawer.configure()
@@ -364,17 +387,18 @@ class Drawer:
 						return configurationStatus
 				valueLength = len(next(iter(mappings.values())))
 				byteMappings = {}
-				for groupVariableName in groupVariableNames:
-					groupVariableIndex = variables.index(groupVariableName) # for naming purposes
-					groupVariableValues = []
+				for groupingVariableName in groupingVariableNames:
+					groupingVariableIndex = variables.index(groupingVariableName) # for naming purposes
+					groupingVariableValues = []
 					for valueIndex in range(valueLength): # start to make the color and the marker for the same group variable value the same across different figures
-						groupVariableValues.append(mappings[groupVariableName][valueIndex])
-					colors = {groupVariableValue:Drawer.__Colors[enumerationIndex % Drawer.__ColorLength] for (
-						enumerationIndex, groupVariableValue
-					) in enumerate(groupVariableValues)}
-					markers = {groupVariableValue:Drawer.__Markers[enumerationIndex % Drawer.__MarkerLength] for (
-						enumerationIndex, groupVariableValue
-					) in enumerate(groupVariableValues)} # finish
+						if mappings[groupingVariableName][valueIndex] not in groupingVariableValues:
+							groupingVariableValues.append(mappings[groupingVariableName][valueIndex])
+					colors = {groupingVariableValue:Drawer.__Colors[enumerationIndex % Drawer.__ColorLength] for (
+						enumerationIndex, groupingVariableValue
+					) in enumerate(groupingVariableValues)}
+					markers = {groupingVariableValue:Drawer.__Markers[enumerationIndex % Drawer.__MarkerLength] for (
+						enumerationIndex, groupingVariableValue
+					) in enumerate(groupingVariableValues)} # finish
 					for independentVariableName in independentVariableNames:
 						independentVariableIndex = variables.index(independentVariableName) # for naming purposes
 						controlledVariableNames = tuple(
@@ -391,13 +415,13 @@ class Drawer:
 							for curveGroupIndex, valueIndexGroup in enumerate(valueIndexGroups.values()):
 								curveMappings = {}
 								for valueIndex in valueIndexGroup:
-									groupVariableValue = mappings[groupVariableName][valueIndex]
-									curveMappings.setdefault(groupVariableValue, {})
-									curveMappings[groupVariableValue].setdefault(
+									groupingVariableValue = mappings[groupingVariableName][valueIndex]
+									curveMappings.setdefault(groupingVariableValue, {})
+									curveMappings[groupingVariableValue].setdefault(
 										mappings[independentVariableName][valueIndex], []
 									).append(mappings[dependentVariableName][valueIndex]) # to avoid multiple ``y`` values
 								curves = []
-								for outerKey, outerValue in curveMappings.items(): # groupVariableValue -> {x -> y(s)}
+								for outerKey, outerValue in curveMappings.items(): # groupingVariableValue -> {x -> y(s)}
 									curves.append({"color":colors[outerKey], "marker":markers[outerKey], "label":outerKey})
 									for innerKey, innerValue in outerValue.items(): # x -> y(s)
 										if Drawer.__checkNumbers(innerValue):
@@ -420,23 +444,54 @@ class Drawer:
 			return TypeError("The mappings should be a dictionary containing several mappings from a string to a tuple or a list of numbers. ")
 
 class Analyzer:
-	def __init__(self:object, inputFilePath:str, outputFilePath:str, caseSensitive:bool = False) -> object:
-		self.__inputFilePath = inputFilePath
+	def __init__(self:object, inputFilePaths:tuple|list|str, outputFilePath:str, caseSensitive:bool = False) -> object:
+		self.__inputFilePaths = inputFilePaths
 		self.__outputFilePath = outputFilePath
 		self.__caseSensitive = caseSensitive is True
+	def __load(self:object) -> dict|BaseException:
+		if isinstance(self.__inputFilePaths, (tuple, list)):
+			index, length = 0, len(self.__inputFilePaths)
+			while index < length:
+				if isinstance(self.__inputFilePaths[index], str):
+					mappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive)
+					if isinstance(mappings, dict):
+						keys = set(mappings.keys())
+						index += 1
+						while index < length: # for (++index; index < length; ++index)
+							currentMappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive)
+							if isinstance(currentMappings, dict):
+								if set(currentMappings.keys()) == keys:
+									for key in mappings.keys():
+										mappings[key].extend(currentMappings[key])
+								else:
+									return KeyError("Keys mismatched across different mappings. ")
+							else:
+								return TypeError("Stopped loading remaining files, interrupted by {0} due to {1}. ".format(
+									repr(self.__inputFilePaths[index]), repr(currentMappings)
+								))
+							index += 1
+						return mappings
+					else:
+						return TypeError("Stopped loading remaining files, interrupted by {0} due to {1}. ".format(repr(self.__inputFilePaths[index]), repr(mappings)))
+				index += 1
+			return ValueError("No strings were found in the unit of the input file paths. ")
+		elif isinstance(self.__inputFilePaths, str):
+			return Loader.load(self.__inputFilePaths, caseSensitive = self.__caseSensitive)
+		else:
+			return TypeError("The input file path(s) should be a tuple, a list, or a string. ")
 	@staticmethod
 	def __checkValues(values:tuple|list) -> bool:
 		return isinstance(values, (tuple, list)) and values and all(isinstance(value, (int, float, str)) for value in values)
 	def analyze(self:object) -> bool|dict|BaseException:
-		mappings = Loader.load(self.__inputFilePath, caseSensitive = self.__caseSensitive)
+		mappings = self.__load()
 		if isinstance(mappings, BaseException):
-			return IOError("Failed to load mappings from {0} due to {1}. ".format(repr(self.__inputFilePath), repr(mappings)))
+			return IOError("Failed to load mappings from {0} due to {1}. ".format(repr(self.__inputFilePaths), repr(mappings)))
 		elif isinstance(mappings, dict) and all(isinstance(key, str) and Analyzer.__checkValues(value) for key, value in mappings.items()) and len(set(len(value) for value in mappings.values())) == 1:
 			variables = tuple(mappings.keys())
 			if "solution" in variables:
-				groupVariableIndex = variables.index("solution")
+				groupingVariableIndex = variables.index("solution")
 			elif "scheme" in variables:
-				groupVariableIndex = variables.index("scheme")
+				groupingVariableIndex = variables.index("scheme")
 			else:
 				return ValueError("Failed to find a suitable group key in mappings. ")
 			if "secparam" in variables:
@@ -451,7 +506,7 @@ class Analyzer:
 				variableName.endswith("(s)") or (variableName.endswith("(B)") and not variableName.startswith("elementOf"))
 			))
 			if dependentVariableIndexes and secparamVariableIndex < runCountVariableIndex and runCountVariableIndex < dependentVariableIndexes[0]:
-				independentVariableIndexes = tuple(variableIndex for variableIndex in range(secparamVariableIndex, runCountVariableIndex) if variableIndex != groupVariableIndex)
+				independentVariableIndexes = tuple(variableIndex for variableIndex in range(secparamVariableIndex, runCountVariableIndex) if variableIndex != groupingVariableIndex)
 				validationVariableIndexes = tuple(variableIndex for variableIndex in range(runCountVariableIndex, dependentVariableIndexes[0]))
 				validationVariableNames = tuple(variables[variableIndex] for variableIndex in validationVariableIndexes)
 				for valueIndex in range(len(next(iter(mappings.values()))) - 1, -1, -1): # remove failed experiments
@@ -467,7 +522,7 @@ class Analyzer:
 					outputDirectoryPath = dirname(self.__outputFilePath)
 					if outputDirectoryPath:
 						makedirs(outputDirectoryPath, exist_ok = True)
-					byteMappings = Drawer.drawMappings(mappings, independentVariableIndexes, dependentVariableIndexes, groupVariableIndex)
+					byteMappings = Drawer.drawMappings(mappings, independentVariableIndexes, dependentVariableIndexes, groupingVariableIndex)
 					if isinstance(byteMappings, dict):
 						__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
 						compressionMappings = {}
@@ -496,10 +551,11 @@ class Analyzers:
 	__DefaultExtensions = {".csv", ".xlsx"}
 	__DefaultFormatString = Parser.getDefaultOutput()
 	__DefaultCompilationTimeout = 10#####
-	def __init__(self:object, *paths:tuple, caseSensitive:bool = False, extensions:tuple|list|set|str = __DefaultExtensions, formatString:str = __DefaultFormatString) -> object:
-		self.__filePaths = []
+	def __init__(self:object, *units:tuple, caseSensitive:bool = False, extensions:tuple|list|set|str = __DefaultExtensions, formatString:str = __DefaultFormatString) -> object:
+		self.__units = []
 		self.__analyzers = []
 		self.__caseSensitive = caseSensitive is True
+		self.__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
 		if isinstance(extensions, (tuple, list, set)):
 			if self.__caseSensitive:
 				self.__extensions = {extension for extension in extensions if isinstance(extension, str)}
@@ -510,7 +566,37 @@ class Analyzers:
 		else:
 			self.__extensions = __DefaultExtensions
 		self.__formatString = formatString if isinstance(formatString, str) else Analyzers.__DefaultFormatString
-		self.updateFilePaths(*paths if paths else ".")
+		self.updateUnits(*units if units else ".")
+	def __getUnitInputFilePaths(self:object, *paths:tuple) -> tuple:
+		inputFilePaths, stack = [], list(reversed(paths))
+		while stack:
+			element = stack.pop()
+			if isinstance(element, (tuple, list)):
+				stack.extend(reversed(element))
+			elif isinstance(element, set):
+				stack.extend(sorted(element, reverse = True))
+			elif isinstance(element, str):
+				if not islink(element):
+					if isdir(element):
+						filePaths = []
+						for root, directoryNames, fileNames in walk(element):
+							for fileName in fileNames:
+								absoluteFilePath = abspath(join(root, fileName))
+								if (
+									not islink(absoluteFilePath) and isfile(absoluteFilePath)
+									and self.__getFileExtension(fileName) in self.__extensions and absoluteFilePath not in inputFilePaths
+								):
+									filePaths.append(absoluteFilePath)
+						filePaths.sort()
+						inputFilePaths.extend(filePaths)
+						del filePaths
+					elif isfile(element):
+						fileName = basename(element)
+						if self.__getFileExtension(fileName) in self.__extensions:
+							absoluteFilePath = abspath(element)
+							if absoluteFilePath not in inputFilePaths:
+								inputFilePaths.append(absoluteFilePath)
+		return tuple(inputFilePaths)
 	def __format(self:object, _d:str = "", _n:str = "", _p:str = "", _x:str = "") -> str:
 		d, n, p, x = _d if isinstance(_d, str) else "", _n if isinstance(_n, str) else "", _p if isinstance(_p, str) else "", _x if isinstance(_x, str) else ""
 		buffer, index, length = [], 0, len(self.__formatString)
@@ -538,9 +624,8 @@ class Analyzers:
 				buffer.append(self.__formatString[index])
 				index += 1
 		return "".join(buffer)
-	def updateFilePaths(self:object, *paths:tuple) -> int:
-		originalLength, stack = len(self.__analyzers), list(reversed(paths))
-		__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
+	def updateUnits(self:object, *units:tuple) -> int:
+		originalLength, stack = len(self.__analyzers), list(reversed(units))
 		while stack:
 			element = stack.pop()
 			if isinstance(element, (tuple, list)):
@@ -548,51 +633,71 @@ class Analyzers:
 			elif isinstance(element, set):
 				stack.extend(sorted(element, reverse = True))
 			elif isinstance(element, str):
-				if not islink(element):
-					if isdir(element):
-						filePaths = []
-						for root, directoryNames, fileNames in walk(element):
-							for fileName in fileNames:
-								absoluteFilePath = abspath(join(root, fileName))
-								if (
-									not islink(absoluteFilePath) and isfile(absoluteFilePath)
-									and __getFileExtension(fileName) in self.__extensions and absoluteFilePath not in self.__filePaths
-								):
-									filePaths.append(absoluteFilePath)
-						filePaths.sort()
-						self.__filePaths.extend(filePaths)
-						del filePaths
-					elif isfile(element):
-						fileName = basename(element)
-						if __getFileExtension(fileName) in self.__extensions:
-							absoluteFilePath = abspath(element)
-							if absoluteFilePath not in self.__filePaths:
-								self.__filePaths.append(absoluteFilePath)
-		del __getFileExtension
-		for filePath in self.__filePaths[originalLength:]:
-			dp, nx = split(filePath)
-			d, p = splitdrive(dp)
-			n, x = splitext(nx)
-			self.__analyzers.append(Analyzer(filePath, self.__format(_d = d, _n = n, _p = p, _x = x), caseSensitive = self.__caseSensitive))
+				try:
+					if not islink(element):
+						if isdir(element):
+							filePaths = []
+							for root, directoryNames, fileNames in walk(element):
+								for fileName in fileNames:
+									absoluteFilePath = abspath(join(root, fileName))
+									if (
+										not islink(absoluteFilePath) and isfile(absoluteFilePath)
+										and self.__getFileExtension(fileName) in self.__extensions and absoluteFilePath not in self.__units
+									):
+										filePaths.append(absoluteFilePath)
+							filePaths.sort()
+							self.__units.extend(filePaths)
+							del filePaths
+						elif isfile(element):
+							fileName = basename(element)
+							if self.__getFileExtension(fileName) in self.__extensions:
+								absoluteFilePath = abspath(element)
+								if absoluteFilePath not in self.__units:
+									self.__units.append(absoluteFilePath)
+				except BaseException as e:
+					print("Analyzers: Some or all of {0} were not added to the units due to {1}. ".format(repr(element), repr(e)))
+			elif isinstance(element, dict) and "i" in element and isinstance(element["i"], (tuple, list, str)) and "o" in element and isinstance(element["o"], str):
+				try:
+					inputFilePaths = self.__getUnitInputFilePaths(element["i"])
+					if inputFilePaths and next((unit for unit in self.__units if isinstance(unit, dict) and "i" in unit and inputFilePaths == unit["i"]), None) is None:
+						self.__units.append({"i":inputFilePaths, "o":element["o"]})
+				except BaseException as e:
+					print("Analyzers: Failed to add the unit {0} to the units due to {1}. ".format(repr(element), repr(e)))
+		index, length = originalLength, len(self.__units)
+		while index < length:
+			if isinstance(self.__units[index], str):
+				dp, nx = split(self.__units[index])
+				d, p = splitdrive(dp)
+				n, x = splitext(nx)
+				self.__analyzers.append(Analyzer(self.__units[index], self.__format(_d = d, _n = n, _p = p, _x = x), caseSensitive = self.__caseSensitive))
+				index += 1
+			elif (
+				isinstance(self.__units[index], dict) and "i" in self.__units[index] and isinstance(self.__units[index]["i"], tuple)
+				and "o" in self.__units[index] and isinstance(self.__units[index]["o"], str)
+			):
+				self.__analyzers.append(Analyzer(self.__units[index]["i"], self.__units[index]["o"], caseSensitive = self.__caseSensitive))
+				index += 1
+			else:
+				del self.__units[index]
 		currentLength = len(self.__analyzers)
 		return currentLength - originalLength
 	def analyze(self:object) -> int:
 		successCount = 0
-		for filePath, analyzer in zip(self.__filePaths, self.__analyzers):
+		for unit, analyzer in zip(self.__units, self.__analyzers):
 			result = analyzer.analyze()
 			if result is True:
 				successCount += 1
-			print("{0} -> {1}".format(repr(filePath), repr(result) if isinstance(result, BaseException) else result))
+			print("Analyzers: {0} -> {1}".format(repr(unit), repr(result) if isinstance(result, BaseException) else result))
 		return successCount
 	def __len__(self:object) -> int:
 		return len(self.__analyzers)
 
 
 def main() -> int:
-	flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, paths = Parser.parse(argv)
+	flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = Parser.parse(argv)
 	Parser.disableConsoleEchoes()
 	if flag > EXIT_SUCCESS and flag > EOF:
-		analyzers = Analyzers(argv[1:], extensions = {".csv", ".xlsx"}, formatString = outputPathWithoutAnExtension)
+		analyzers = Analyzers(units, extensions = {".csv", ".xlsx"}, formatString = outputPathWithoutAnExtension)
 		totalCount = len(analyzers)
 		if totalCount >= 1:
 			successCount = analyzers.analyze()

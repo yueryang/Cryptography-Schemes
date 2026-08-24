@@ -982,10 +982,10 @@ class SchemeCoefficientComputation:
 		solutionName = getattr(solution, "__qualname__", getattr(solution, "__name__", repr(solution)))
 		return ".".join(solutionName.split(".")[offset if isinstance(offset, int) and offset >= 0 else None:])
 	def __conductBasicScheme(self:object, r:int = __DefaultRunCount, isVerbose:bool = True) -> list:
-		runCount, results = r if isinstance(r, int) and r >= 1 else SchemeCoefficientComputation.__DefaultRunCount, []
+		schemeName, runCount, results = Parser.getSchemeName(), r if isinstance(r, int) and r >= 1 else SchemeCoefficientComputation.__DefaultRunCount, []
 		if isVerbose is not False:
-			print("scheme: base")
-			print("curveNames: {0}".format(self.__curveNames))
+			print("Scheme: {0}".format(schemeName))
+			print("Curve names: {0}".format(self.__curveNames))
 			print("one: {0}".format(("reliable", "unreliable")))
 			print("solution: {0}".format(tuple(self.__getSolutionName(solution) for solution in Solutions.Constant2Highest.getAllSolutions() + Solutions.Highest2Constant.getAllSolutions())))
 			print("runCount: {0}".format(runCount))
@@ -1013,7 +1013,7 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(constant2HighestSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append(["Base", curveName, group.secparam, "reliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([schemeName, curveName, group.secparam, "reliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount])
 			for highest2ConstantSolution in Solutions.Highest2Constant.getAllSolutions():
 				correctness = 0
 				startTime = perf_counter()
@@ -1025,7 +1025,7 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(highest2ConstantSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append(["Base", curveName, group.secparam, "reliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([schemeName, curveName, group.secparam, "reliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount])
 			
 			# Faulty #
 			group.__construct = group.init
@@ -1041,7 +1041,7 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(constant2HighestSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append(["Base", curveName, group.secparam, "unreliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([schemeName, curveName, group.secparam, "unreliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount])
 			for highest2ConstantSolution in Solutions.Highest2Constant.getAllSolutions():
 				correctness = 0
 				startTime = perf_counter()
@@ -1053,7 +1053,7 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(highest2ConstantSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append(["Base", curveName, group.secparam, "unreliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([schemeName, curveName, group.secparam, "unreliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount])
 		if isVerbose is not False:
 			print()
 		return results
@@ -1107,11 +1107,10 @@ class SchemeCoefficientComputation:
 							print("Device: Failed to patch {0} with {1} due to {2}. ".format(repr(filePath), self.__getSolutionName(solution), repr(e)))
 						continue
 					for curveName in curveNames:
-						secparam = PairingGroup(curveName).secparam
+						securityParameter = PairingGroup(curveName).secparam
 						if isVerbose is not False:
-							print("scheme: {0}".format(filePath))
-							print("curveName: {0}".format(curveName))
-							print("secparam: {0}".format(secparam))
+							print("Scheme: {0}".format(filePath))
+							print("Curve: ({0}, {1})".format(curveName, securityParameter))
 							print("one: {0}".format("reliable" if one else "unreliable"))
 							print("solution: {0}".format(self.__getSolutionName(solution)))
 							print("runCount: {0}".format(runCount))
@@ -1124,7 +1123,7 @@ class SchemeCoefficientComputation:
 							endTime = perf_counter()
 							averageTimeConsumption = (endTime - startTime) / runCount
 							results.append([
-								scheme, curveName, secparam, "reliable" if one else "unreliable", 
+								scheme, curveName, securityParameter, "reliable" if one else "unreliable", 
 								self.__getSolutionName(solution), runCount, correctness, averageTimeConsumption
 							])
 							if isVerbose is not False:
