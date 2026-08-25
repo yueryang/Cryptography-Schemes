@@ -357,6 +357,7 @@ jobs:
           outputFileName="$(basename "${outputFilePath}")"
           schemeLaTeXFilePath="${directoryPath}/${mainFileName}LaTeX/${mainFileName}-${timeString}.tex"
           schemePDFFilePath="${directoryPath}/${mainFileName}LaTeX/${mainFileName}-${timeString}.pdf"
+          analysisFilePath="${directoryPath}/${mainFileName}Figures.zip"
           echo "Cryptographic scheme: ${{ matrix.cryptographicScheme }}"
           echo "Requirement file path: ${requirementFilePath}"
           echo "Charm-based scheme: ${charmBasedScheme}"
@@ -369,12 +370,14 @@ jobs:
           echo "Output file name: ${outputFileName}"
           echo "Scheme LaTeX file path: ${schemeLaTeXFilePath}"
           echo "Scheme PDF file path: ${schemePDFFilePath}"
+          echo "Analysis file path: ${analysisFilePath}"
           echo "requirementFilePath=${requirementFilePath}" >> "${GITHUB_OUTPUT}"
           echo "charmBasedScheme=${charmBasedScheme}" >> "${GITHUB_OUTPUT}"
           echo "outputFilePath=${outputFilePath}" >> "${GITHUB_OUTPUT}"
           echo "outputFileName=${outputFileName}" >> "${GITHUB_OUTPUT}"
           echo "schemeLaTeXFilePath=${schemeLaTeXFilePath}" >> "${GITHUB_OUTPUT}"
           echo "schemePDFFilePath=${schemePDFFilePath}" >> "${GITHUB_OUTPUT}"
+          echo "analysisFilePath=${analysisFilePath}" >> "${GITHUB_OUTPUT}"
         env:
           pythonVersion: ${{ github.event.inputs.pythonVersion || '3.x' }}
           decimalPlaceString: ${{ github.event.inputs.decimalPlace || '9' }}
@@ -390,7 +393,7 @@ jobs:
           sudo apt-get install -y flex libfl-dev libgmp-dev libssl-dev texlive-latex-base wget
       
       - name: Set up Python ${{ github.event.inputs.pythonVersion || '3.x' }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ github.event.inputs.pythonVersion || '3.x' }}
       
@@ -476,3 +479,26 @@ jobs:
           path: ${{ github.workspace }}/${{ steps.ready.outputs.outputFilePath }}
           archive: false
           if-no-files-found: error
+      
+      - name: Analyze
+        run: |
+          cd "${{ github.workspace }}"
+          echo "The current working directory is \"$(pwd)\". "
+          if [[ -f "analyze.py" ]];
+          then
+            echo "\$ python \"analyze.py\" -t 0 -h"
+            python "analyze.py" -t 0 -h
+            echo ""
+            echo "\$ python \"analyze.py\" -t 0 -- \"${{ steps.ready.outputs.outputFileName }}\""
+            python "analyze.py" -t 0 -- "${{ steps.ready.outputs.outputFileName }}"
+          else
+            echo "Could not execute the analyzer \"analyze.py\" via Python ${{ github.event.inputs.pythonVersion || '3.x' }}. "
+            tree
+          fi
+      
+      - name: Upload the analysis
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ github.workspace }}/${{ steps.ready.outputs.analysisFilePath }}
+          archive: false
+          if-no-files-found: warn

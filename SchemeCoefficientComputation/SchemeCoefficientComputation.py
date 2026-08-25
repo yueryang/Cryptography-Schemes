@@ -982,24 +982,25 @@ class SchemeCoefficientComputation:
 		solutionName = getattr(solution, "__qualname__", getattr(solution, "__name__", repr(solution)))
 		return ".".join(solutionName.split(".")[offset if isinstance(offset, int) and offset >= 0 else None:])
 	def __conductBasicScheme(self:object, r:int = __DefaultRunCount, isVerbose:bool = True) -> list:
-		schemeName, runCount, results = Parser.getSchemeName(), r if isinstance(r, int) and r >= 1 else SchemeCoefficientComputation.__DefaultRunCount, []
-		if isVerbose is not False:
-			print("Scheme: {0}".format(schemeName))
-			print("Curve names: {0}".format(self.__curveNames))
-			print("one: {0}".format(("reliable", "unreliable")))
-			print("solution: {0}".format(tuple(self.__getSolutionName(solution) for solution in Solutions.Constant2Highest.getAllSolutions() + Solutions.Highest2Constant.getAllSolutions())))
-			print("runCount: {0}".format(runCount))
+		groups, schemeName, runCount, results = [], Parser.getSchemeName(), r if isinstance(r, int) and r >= 1 else SchemeCoefficientComputation.__DefaultRunCount, []
 		for curveName in self.__curveNames:
 			try:
-				group = PairingGroup(curveName)
-				roots = [group.init(ZR, 2), group.init(ZR, 3), group.init(ZR, 5)]
-				k = group.init(ZR, 7)
-				answer2Lowest2Highest = (group.init(ZR, -23), group.init(ZR, 31), group.init(ZR, -10)) # initialize an ``x`` without ``1 * `` with Horner's Method when computing polynomials
-				answer2Highest2Lowest = tuple(reversed(answer2Lowest2Highest))
+				groups.append(PairingGroup(curveName))
 			except Exception as e: # never catch ``KeyboardInterrupt`` here
 				if isVerbose is not False:
 					print("Basic: Failed to initialize the curve with name {0} due to {1}. ".format(repr(curveName), repr(e)))
 				continue
+		if isVerbose is not False:
+			print("Scheme: {0}".format(schemeName))
+			print("Curves: {0}".format([(group.groupType(), group.secparam) for group in groups]))
+			print("One: {0}".format(("reliable", "unreliable")))
+			print("Solution: {0}".format(tuple(self.__getSolutionName(solution) for solution in Solutions.Constant2Highest.getAllSolutions() + Solutions.Highest2Constant.getAllSolutions())))
+			print("runCount: {0}".format(runCount))
+		for group in groups:
+			roots = [group.init(ZR, 2), group.init(ZR, 3), group.init(ZR, 5)]
+			k = group.init(ZR, 7)
+			answer2Lowest2Highest = (group.init(ZR, -23), group.init(ZR, 31), group.init(ZR, -10)) # initialize an ``x`` without ``1 * `` with Horner's Method when computing polynomials
+			answer2Highest2Lowest = tuple(reversed(answer2Lowest2Highest))
 			
 			# Normal #
 			for constant2HighestSolution in Solutions.Constant2Highest.getAllSolutions():
@@ -1013,7 +1014,9 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(constant2HighestSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append([schemeName, curveName, group.secparam, "reliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([
+					schemeName, group.groupType(), group.secparam, "reliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount
+				])
 			for highest2ConstantSolution in Solutions.Highest2Constant.getAllSolutions():
 				correctness = 0
 				startTime = perf_counter()
@@ -1025,7 +1028,9 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(highest2ConstantSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append([schemeName, curveName, group.secparam, "reliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([
+					schemeName, group.groupType(), group.secparam, "reliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount
+				])
 			
 			# Faulty #
 			group.__construct = group.init
@@ -1041,7 +1046,9 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(constant2HighestSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append([schemeName, curveName, group.secparam, "unreliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([
+					schemeName, group.groupType(), group.secparam, "unreliable", self.__getSolutionName(constant2HighestSolution), runCount, correctness, (endTime - startTime) / runCount
+				])
 			for highest2ConstantSolution in Solutions.Highest2Constant.getAllSolutions():
 				correctness = 0
 				startTime = perf_counter()
@@ -1053,7 +1060,9 @@ class SchemeCoefficientComputation:
 					if isVerbose is not False:
 						print("Basic: {0} failed on {1} due to {2}. ".format(self.__getSolutionName(highest2ConstantSolution), curveName, repr(e)))
 				endTime = perf_counter()
-				results.append([schemeName, curveName, group.secparam, "unreliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount])
+				results.append([
+					schemeName, group.groupType(), group.secparam, "unreliable", self.__getSolutionName(highest2ConstantSolution), runCount, correctness, (endTime - startTime) / runCount
+				])
 		if isVerbose is not False:
 			print()
 		return results
@@ -1111,8 +1120,8 @@ class SchemeCoefficientComputation:
 						if isVerbose is not False:
 							print("Scheme: {0}".format(filePath))
 							print("Curve: ({0}, {1})".format(curveName, securityParameter))
-							print("one: {0}".format("reliable" if one else "unreliable"))
-							print("solution: {0}".format(self.__getSolutionName(solution)))
+							print("One: {0}".format("reliable" if one else "unreliable"))
+							print("Solution: {0}".format(self.__getSolutionName(solution)))
 							print("runCount: {0}".format(runCount))
 						try:
 							correctness = 0

@@ -1,6 +1,7 @@
 from os import chdir, makedirs, name, sep, walk
 from os.path import abspath, basename, dirname, isdir, isfile, islink, join, split, splitdrive, splitext
 from sys import argv, exit
+from ast import literal_eval
 try:
 	from libcst import Add, Attribute, BinaryOperation, CSTNode, Call, ClassDef, ConcatenatedString, EmptyLine, FunctionDef, Name, SimpleString, TrailingWhitespace, parse_module
 except:
@@ -27,6 +28,7 @@ class Parser:
 	__DefaultPlace = 9
 	__PlaceTranslations = {"s":0, "second":0, "ms":3, "millisecond":3, "microsecond":6, "ns":9, "nanosecond":9, "ps":12, "picosecond":12, "fs":15, "femtosecond":15}
 	__OptionTime = ("t", "/t", "-t", "time", "/time", "--time")
+	__OptionUnit = ("u", "/u", "-u", "unit", "/unit", "--unit")
 	__DefaultTime = float("inf")
 	__tcgetattr = None
 	__OriginalConsoleAttributes = None
@@ -60,6 +62,10 @@ class Parser:
 			"\t{0} [0|0.1|1|10|...|inf]\t\tSpecify the waiting time before exiting, which should be non-negative. ".format(Parser.__formatOption(Parser.__OptionTime))
 			+ "Passing inf requires users to manually press the Enter key before exiting. The default value is {0}. ".format(Parser.__DefaultTime)
 		)
+		print((
+			"\t{0}\t\tSpecify a processing unit using a Python dictionary containing the keys \"i\" and \"o\", "
+			+ "in which the value for \"i\" can be a string, a tuple, or a list, and the value for \"o\" should be a string. "
+		).format(Parser.__formatOption(Parser.__OptionUnit)))
 		print()
 	@staticmethod
 	def __parseRealNumber(string:str) -> int|float|None:
@@ -122,12 +128,12 @@ class Parser:
 	@staticmethod
 	def parse(args:tuple|list) -> tuple:
 		arguments = tuple(argument for argument in args if isinstance(argument, str)) if isinstance(args, (tuple, list)) else ()
-		flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, paths = max(EXIT_SUCCESS, EOF) + 1, Parser.__DefaultOutput, Parser.__DefaultPlace, Parser.__DefaultTime, []
+		flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = max(EXIT_SUCCESS, EOF) + 1, Parser.__DefaultOutput, Parser.__DefaultPlace, Parser.__DefaultTime, []
 		index, argumentCount, nonOptionMode, buffers = 1, len(arguments), False, []
 		while index < argumentCount:
 			argument = arguments[index].lower()
 			if nonOptionMode:
-				paths.append(arguments[index])
+				units.append(arguments[index])
 			elif argument in Parser.__OptionDelimiter:
 				nonOptionMode = True
 			elif argument in Parser.__OptionHelp:
@@ -177,13 +183,29 @@ class Parser:
 				else:
 					flag = EOF
 					buffers.append("Parser: The value for the waiting time option is missing at [{0}]. ".format(index))
+			elif argument in Parser.__OptionUnit:
+				index += 1
+				if index < argumentCount:
+					try:
+						unit = literal_eval(arguments[index])
+						if isinstance(unit, dict) and "i" in unit and "o" in unit:
+							units.append(unit)
+						else:
+							buffers.append("Parser: The value [{0}] = {1} for the unit option should be a Python dictionary containing the keys \"i\" and \"o\". ".format(
+								index, repr(arguments[index])
+							))
+					except BaseException as e:
+						buffers.append("Parser: The value [{0}] = {1} for the unit option cannot be literally evaluated due to {2}. ".format(index, repr(arguments[index]), repr(e)))
+				else:
+					flag = EOF
+					buffers.append("Parser: The value for the unit option is missing at [{0}]. ".format(index))
 			else:
-				paths.append(argument)
+				units.append(arguments[index])
 			index += 1
 		if EOF == flag:
 			for buffer in buffers:
 				print(buffer)
-		return (flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, paths)
+		return (flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units)
 	@staticmethod
 	def disableConsoleEchoes() -> bool:
 		if "posix" == name:
@@ -329,7 +351,7 @@ class Builder:
 		elif "\t{0}" == string:
 			return True
 		elif not string.startswith("Saver: "):
-			self.__generationDiagnostics["Saver"].append("The statement {0} should start with {1}. ".format(repr(string), repr(descriptor)))
+			self.__generationDiagnostics["Saver"].append("The statement {0} should start with \"Saver: \". ".format(repr(string)))
 			return False
 		elif string[7:] in (
 			"Failed to initialize the directory for the output file path {0}. ", "Failed to save the results to {0} due to the following exception(s). \n\t{1}", 
@@ -349,9 +371,9 @@ class Builder:
 				Builder.__GenerationDiagnostics["Function"].append(string)
 			return True
 		elif string in (
-			"Basic: Failed to initialize the curve with name {0} due to {1}. ", "Basic: {0} failed on {1} due to {2}. ", "Curve names: {0}", 
+			"Basic: Failed to initialize the curve with name {0} due to {1}. ", "Basic: {0} failed on {1} due to {2}. ", "Curve: ({0}, {1})", "Curves: {0}", 
 			"Device: Failed to parse {0} due to {1}. ", "Device: Failed to patch {0} with {1} due to {2}. ", "Device: {0} failed on {1} due to {2}. ", 
-			"Is the scheme correct? {0}. ", "Scheme: {0}", "Time: {0}", "one: {0}", "runCount: {0}", "solution: {0}"
+			"Is the scheme correct? {0}. ", "One: {0}", "Scheme: {0}", "Solution: {0}", "Time: {0}", "runCount: {0}"
 		):
 			return True
 		elif not functionName:
@@ -583,7 +605,7 @@ class Builders: # ("%%", "%d", "%n", "%p", "%x") = ("%", "driveLetter:", "mainFi
 	__DefaultSchemeFilePathPrompt = "[F] "
 	__DefaultGenerationPrompt = "[G] "
 	__DefaultCompilationPrompt = "[C] "
-	def __init__(self:object, formatString:str = __DefaultFormatString, collectionMode:bool = False, *paths:tuple) -> object:
+	def __init__(self:object, *paths:tuple, formatString:str = __DefaultFormatString, collectionMode:bool = False) -> object:
 		self.__formatString = formatString if isinstance(formatString, str) else Builders.__DefaultFormatString
 		self.__collectionMode = collectionMode is True
 		self.__filePaths = []
@@ -679,7 +701,7 @@ class Builders: # ("%%", "%d", "%n", "%p", "%x") = ("%", "driveLetter:", "mainFi
 
 
 def main() -> int:
-	flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, paths = Parser.parse(argv)
+	flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = Parser.parse(argv)
 	Parser.disableConsoleEchoes()
 	if flag > EXIT_SUCCESS and flag > EOF:
 		if any((
@@ -690,7 +712,7 @@ def main() -> int:
 			print("Please install the libraries via the active Python package manager (e.g., pip). ")
 			errorLevel = EOF
 		else:
-			builders = Builders(outputPathWithoutAnExtension, False, *paths)
+			builders = Builders(*units, formatString = outputPathWithoutAnExtension, collectionMode = False)
 			totalCount = len(builders)
 			print("Gathered {0} to build. ".format(("{0} items" if totalCount > 1 else "{0} item").format(totalCount)))
 			if totalCount >= 1:

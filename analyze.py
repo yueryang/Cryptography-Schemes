@@ -196,7 +196,7 @@ class Parser:
 					flag = EOF
 					buffers.append("Parser: The value for the unit option is missing at [{0}]. ".format(index))
 			else:
-				paths.append(arguments[index])
+				units.append(arguments[index])
 			index += 1
 		if EOF == flag:
 			for buffer in buffers:
