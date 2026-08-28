@@ -357,7 +357,7 @@ jobs:
           outputFileName="$(basename "${outputFilePath}")"
           schemeLaTeXFilePath="${directoryPath}/${mainFileName}LaTeX/${mainFileName}-${timeString}.tex"
           schemePDFFilePath="${directoryPath}/${mainFileName}LaTeX/${mainFileName}-${timeString}.pdf"
-          analysisFilePath="${directoryPath}/${mainFileName}Figures.zip"
+          analysisFilePath="${directoryPath}/${mainFileName}-Python${pythonVersion}-p${decimalPlace}-r${runCount}-${timeString}.zip"
           echo "Cryptographic scheme: ${{ matrix.cryptographicScheme }}"
           echo "Requirement file path: ${requirementFilePath}"
           echo "Charm-based scheme: ${charmBasedScheme}"
@@ -489,8 +489,8 @@ jobs:
             echo "\$ python \"analyze.py\" -t 0 -h"
             python "analyze.py" -t 0 -h
             echo ""
-            echo "\$ python \"analyze.py\" -t 0 -- \"${{ steps.ready.outputs.outputFileName }}\""
-            python "analyze.py" -t 0 -- "${{ steps.ready.outputs.outputFileName }}"
+            echo "\$ python \"analyze.py\" -t 0 -- \"${{ steps.ready.outputs.outputFilePath }}\""
+            python "analyze.py" -t 0 -- "${{ steps.ready.outputs.outputFilePath }}"
           else
             echo "Could not execute the analyzer \"analyze.py\" via Python ${{ github.event.inputs.pythonVersion || '3.x' }}. "
             tree

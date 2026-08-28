@@ -601,12 +601,11 @@ class Builder:
 		return Builder.__GenerationDiagnostics
 
 class Builders: # ("%%", "%d", "%n", "%p", "%x") = ("%", "driveLetter:", "mainFileName", "/directoryPath", ".extension")
-	__DefaultFormatString = Parser.getDefaultOutput()
 	__DefaultSchemeFilePathPrompt = "[F] "
 	__DefaultGenerationPrompt = "[G] "
 	__DefaultCompilationPrompt = "[C] "
-	def __init__(self:object, *paths:tuple, formatString:str = __DefaultFormatString, collectionMode:bool = False) -> object:
-		self.__formatString = formatString if isinstance(formatString, str) else Builders.__DefaultFormatString
+	def __init__(self:object, *paths:tuple, formatString:str = Parser.getDefaultOutput(), collectionMode:bool = False) -> object:
+		self.__formatString = formatString if isinstance(formatString, str) else Parser.getDefaultOutput()
 		self.__collectionMode = collectionMode is True
 		self.__filePaths = []
 		self.__builders = []

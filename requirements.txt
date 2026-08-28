@@ -1,2 +1,5 @@
 # Python built-in standard libraries
 libcst
+xlrd # XLS
+openpyxl # XLSX
+matplotlib

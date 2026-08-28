@@ -1,7 +1,8 @@
 from os import chdir, makedirs, name, walk
-from os.path import abspath, basename, dirname, isdir, isfile, islink, join, split, splitdrive, splitext
+from os.path import abspath, dirname, isdir, isfile, islink, join, split, splitdrive, splitext
 from sys import argv, exit
 from ast import literal_eval
+from codecs import lookup
 from getpass import getpass
 from io import BytesIO
 from time import sleep
@@ -17,9 +18,11 @@ EOF = (-1)
 
 class Parser:
 	__OptionDelimiter = ("//", "--")
+	__OptionEncoding = ("e", "/e", "-e", "encoding", "/encoding", "--encoding")
+	__DefaultEncoding = "utf-8"
 	__OptionHelp = ("h", "/h", "-h", "help", "/help", "--help")
 	__OptionOutput = ("o", "/o", "-o", "output", "/output", "--output")
-	__DefaultOutput = "%p/%nFigures"
+	__DefaultOutput = "%p/%n"
 	__OptionPlace = ("p", "/p", "-p", "place", "/place", "--place")
 	__DefaultPlace = 9
 	__PlaceTranslations = {"s":0, "second":0, "ms":3, "millisecond":3, "microsecond":6, "ns":9, "nanosecond":9, "ps":12, "picosecond":12, "fs":15, "femtosecond":15}
@@ -46,6 +49,9 @@ class Parser:
 		print()
 		print("Options (case-insensitive): ")
 		print("\t{0}\t\tIndicate that all the following arguments are independent input paths. ".format(Parser.__formatOption(Parser.__OptionDelimiter)))
+		print("\t{0} [utf-8|utf-16|...]\t\tSpecify the encoding mode for input files. The default value is {1}. ".format(
+			Parser.__formatOption(Parser.__OptionEncoding), Parser.__DefaultEncoding
+		))
 		print("\t{0}\t\tPrint this help document. ".format(Parser.__formatOption(Parser.__OptionHelp)))
 		print((
 			"\t{0} <output>\t\tSpecify the output file path without an extension, which can be a format string, "
@@ -124,7 +130,9 @@ class Parser:
 	@staticmethod
 	def parse(args:tuple|list) -> tuple:
 		arguments = tuple(argument for argument in args if isinstance(argument, str)) if isinstance(args, (tuple, list)) else ()
-		flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = max(EXIT_SUCCESS, EOF) + 1, Parser.__DefaultOutput, Parser.__DefaultPlace, Parser.__DefaultTime, []
+		flag, encoding, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = (
+			max(EXIT_SUCCESS, EOF) + 1, Parser.__DefaultEncoding, Parser.__DefaultOutput, Parser.__DefaultPlace, Parser.__DefaultTime, []
+		)
 		index, argumentCount, nonOptionMode, buffers = 1, len(arguments), False, []
 		while index < argumentCount:
 			argument = arguments[index].lower()
@@ -132,6 +140,18 @@ class Parser:
 				units.append(arguments[index])
 			elif argument in Parser.__OptionDelimiter:
 				nonOptionMode = True
+			elif argument in Parser.__OptionEncoding:
+				index += 1
+				if index < argumentCount:
+					try:
+						lookup(arguments[index])
+						encoding = arguments[index]
+					except:
+						flag = EOF
+						buffers.append("Parser: The value [{0}] = {1} for the encoding option is invalid. ".format(index, repr(arguments[index])))
+				else:
+					flag = EOF
+					buffers.append("Parser: The value for the encoding option is missing at [{0}]. ".format(index))
 			elif argument in Parser.__OptionHelp:
 				Parser.__printHelp()
 				flag = EXIT_SUCCESS
@@ -201,7 +221,7 @@ class Parser:
 		if EOF == flag:
 			for buffer in buffers:
 				print(buffer)
-		return (flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units)
+		return (flag, encoding, outputPathWithoutAnExtension, decimalPlace, waitingTime, units)
 	@staticmethod
 	def disableConsoleEchoes() -> bool:
 		if "posix" == name:
@@ -222,6 +242,9 @@ class Parser:
 				return False
 		return True
 	@staticmethod
+	def getDefaultEncoding() -> str:
+		return Parser.__DefaultEncoding
+	@staticmethod
 	def getDefaultOutput() -> str:
 		return Parser.__DefaultOutput
 	@staticmethod
@@ -235,27 +258,240 @@ class Parser:
 		return True
 
 class Loader:
-	__read_csv = None
-	__read_excel = None
+	__reader = None # CSV/TSV
+	__loadJSON = None # JSON
+	__TableParser = None # HTM/HTML
+	__open_workbook = None # XLS
+	__load_workbook = None # XLSX
+	__ElementTree = None # XML
 	@staticmethod
-	def load(inputFilePath:str, caseSensitive:bool = False) -> dict|BaseException: # {"x":[1, 2, 3], "y":[1, 4, 9]}
+	def __coerceValue(value:object) -> object:
+		try:
+			if isinstance(value, str):
+				strippedValue = value.strip().lower()
+				if "true" == strippedValue:
+					return True
+				elif "false" == strippedValue:
+					return False
+				else:
+					try:
+						return int(strippedValue)
+					except ValueError:
+						try:
+							return float(strippedValue)
+						except ValueError:
+							return value
+			elif isinstance(value, (int, float)):
+				return value
+		except Exception:
+			return ""
+	@staticmethod
+	def __rowsToMappings(rows:tuple|list) -> dict|BaseException: # [["x", "y"], [1, 1], [2, 4], [3.0, 9.0], [4]] -> {"x": [1, 2, 3.0, 4], "y": [1, 4, 9.0, ""]}
+		if isinstance(rows, (tuple, list)) and rows and isinstance(rows[0], (tuple, list)):
+			columns = tuple("" if cell is None else str(cell) for cell in rows[0])
+			mappings = {column:[] for column in columns}
+			columnLength = len(columns)
+			if len(mappings) == columnLength:
+				for row in rows[1:]:
+					if isinstance(row, (tuple, list)):
+						index, rowLength = 0, min(len(row), columnLength)
+						while index < rowLength:
+							mappings[columns[index]].append(Loader.__coerceValue(row[index]))
+							index += 1
+						while index < columnLength:
+							mappings[columns[index]].append("")
+							index += 1
+				return mappings
+			else:
+				return KeyError("Repeated column names were found in the input file. ")
+		else:
+			return TypeError("The rows loaded should be a tuple or a list containing one or more tuples or lists. ")
+	@staticmethod
+	def __loadDelimited(inputFilePath:str, delimiter:str = ',', encoding:str = "utf-8") -> dict|BaseException: # CSV/TSV
+		try:
+			if Loader.__reader is None:
+				Loader.__reader = __import__("csv").reader
+			with open(inputFilePath, "r", newline = "", encoding = encoding) as f:
+				return Loader.__rowsToMappings(list(Loader.__reader(f, delimiter = delimiter)))
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __loadHTML(inputFilePath:str, encoding:str = "utf-8") -> dict|BaseException: # HTM/HTML
+		try:
+			if Loader.__TableParser is None:
+				class TableParser(__import__("html.parser", fromlist = ["HTMLParser"]).HTMLParser):
+					def __init__(self:object) -> object:
+						super().__init__(convert_charrefs = True)
+						self.rows, self.__row, self.__cell = [], None, None
+					def handle_starttag(self:object, tag:str, attrs:list) -> None:
+						if "tr" == tag:
+							self.__row = []
+						elif tag in ("th", "td") and self.__row is not None:
+							self.__cell = []
+					def handle_data(self:object, data:str) -> None:
+						if self.__cell is not None:
+							self.__cell.append(data)
+					def handle_endtag(self:object, tag:str) -> None:
+						if tag in ("th", "td") and self.__cell is not None and self.__row is not None:
+							self.__row.append("".join(self.__cell))
+							self.__cell = None
+						elif "tr" == tag and self.__row is not None:
+							self.rows.append(self.__row)
+							self.__row = None
+				Loader.__TableParser = TableParser
+			tableParser = Loader.__TableParser()
+			with open(inputFilePath, "r", encoding = encoding) as f:
+				tableParser.feed(f.read())
+			tableParser.close() # different from ``with TableParser(...) as ...``
+			return Loader.__rowsToMappings(tableParser.rows)
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __structuredDataToMappings(data:object) -> dict|BaseException: # {"columns":["x", "y"], "results":[[1, 1], [2, 4], [3, 9]]} -> {"x":[1, 2, 3], "y":[1, 4, 9]}
+		if isinstance(data, dict) and "columns" in data and "results" in data and isinstance(data["columns"], (tuple, list)) and isinstance(data["results"], (tuple, list)):
+			return Loader.__rowsToMappings([list(data["columns"])] + [list(result) for result in data["results"] if isinstance(result, (tuple, list))])
+		else:
+			return ValueError("The structured data should be a dictionary containing the keys \"columns\" and \"results\". ")
+	@staticmethod
+	def __loadJSON(inputFilePath:str, encoding:str = "utf-8") -> dict|BaseException: # JSON
+		try:
+			if Loader.__loadJSON is None:
+				Loader.__loadJSON = __import__("json").load
+			with open(inputFilePath, "r", encoding = encoding) as f:
+				return Loader.__structuredDataToMappings(Loader.__loadJSON(f))
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __loadTXT(inputFilePath:str, encoding:str = "utf-8") -> dict|BaseException: # TXT
+		try:
+			with open(inputFilePath, "r", encoding = encoding) as f:
+				return Loader.__structuredDataToMappings(literal_eval(f.read()))
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __unescapeTEX(text:object) -> str: # the inverse of the ``escapeTEX`` used by the savers
+		if isinstance(text, str):
+			text = text.strip()
+			if text.startswith("\\textbf{") and text.endswith("}"): # column header or padded header cell
+				text = text[len("\\textbf{"):-1]
+			if len(text) >= 2 and text.startswith("$") and text.endswith("$"): # numeric cell
+				text = text[1:-1]
+			if "~" == text: # padded cell
+				return ""
+			text = text.replace("\\textbackslash{}", "\0")
+			for escaped, original in (
+				("\\#", "#"), ("\\$", "$"), ("\\%", "%"), ("\\&", "&"), ("\\_", "_"), ("\\{", "{"), ("\\}", "}"),
+				("\\textless{}", "<"), ("\\textgreater{}", ">"), ("\\textasciicircum{}", "^"), ("\\textasciitilde{}", "~")
+			):
+				text = text.replace(escaped, original)
+			return text.replace("\0", "\\")
+		else:
+			return ""
+	@staticmethod
+	def __loadTEX(inputFilePath:str, encoding:str = "utf-8") -> dict|BaseException: # TEX
+		try:
+			rows, inTable = [], False
+			with open(inputFilePath, "r", encoding = encoding) as f:
+				for line in f:
+					strippedLine = line.strip()
+					if "\\toprule" in strippedLine:
+						inTable = True
+					elif "\\bottomrule" in strippedLine:
+						break
+					elif inTable and " & " in strippedLine:
+						if strippedLine.endswith("\\\\"):
+							strippedLine = strippedLine[:-2].rstrip()
+						rows.append([Loader.__unescapeTEX(cell) for cell in strippedLine.split(" & ")])
+			return Loader.__rowsToMappings(rows)
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __loadXLS(inputFilePath:str) -> dict|BaseException: # XLS
+		try:
+			if Loader.__open_workbook is None:
+				Loader.__open_workbook = __import__("xlrd").open_workbook
+			workbook = Loader.__open_workbook(inputFilePath)
+			worksheet = workbook.sheet_by_index(0)
+			return Loader.__rowsToMappings([worksheet.row_values(rowIndex) for rowIndex in range(worksheet.nrows)])
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __loadXLSX(inputFilePath:str) -> dict|BaseException: # XLSX
+		try:
+			if Loader.__load_workbook is None:
+				Loader.__load_workbook = __import__("openpyxl").load_workbook
+			workbook = Loader.__load_workbook(inputFilePath, read_only = True, data_only = True)
+			try:
+				return Loader.__rowsToMappings([tuple(row) for row in workbook.active.iter_rows(values_only = True)])
+			finally:
+				workbook.close()
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __loadXML(inputFilePath:str) -> dict|BaseException: # XML
+		try:
+			if Loader.__ElementTree is None:
+				Loader.__ElementTree = __import__("xml.etree.ElementTree", fromlist = ["ElementTree"])
+			root = Loader.__ElementTree.parse(inputFilePath).getroot()
+			rows = [[element.text or "" for element in root.iter("column")]]
+			for result in root.iter("result"):
+				rows.append([element.text or "" for element in result.iter("r")])
+			return Loader.__rowsToMappings(rows)
+		except BaseException as e:
+			return e
+	@staticmethod
+	def __loadYAML(inputFilePath:str, encoding:str = "utf-8") -> dict|BaseException: # YAML/YML
+		try:
+			if Loader.__loadJSON is None:
+				Loader.__loadJSON = __import__("json").load
+			rows, section = [], None
+			with open(inputFilePath, "r", encoding = encoding) as f:
+				for line in f:
+					line = line.rstrip("\r\n")
+					if line.startswith("columns:"):
+						section = None if line.rstrip().endswith("[]") else "columns"
+					elif line.startswith("results:"):
+						section = None if line.rstrip().endswith("[]") else "results"
+					elif "columns" == section and line.startswith("  - "):
+						if rows:
+							rows[0].append(Loader.__loadJSON(line[4:]))
+						else:
+							rows.append([Loader.__loadJSON(line[4:])])
+					elif "results" == section:
+						if line.startswith("  - - "):
+							rows.append([Loader.__loadJSON(line[6:])])
+						elif line.startswith("    - ") and rows:
+							rows[-1].append(Loader.__loadJSON(line[6:]))
+						elif line.startswith("  - []"):
+							rows.append([])
+			return Loader.__rowsToMappings(rows)
+		except BaseException as e:
+			return e
+	@staticmethod
+	def load(inputFilePath:str, caseSensitive:bool = False, encoding:str = "utf-8") -> dict|BaseException: # {"x":[1, 2, 3], "y":[1, 4, 9]}
 		try:
 			originalExtension = splitext(inputFilePath)[1]
 			extension = originalExtension.lower() if caseSensitive is not True else originalExtension
 			if ".csv" == extension:
-				if Loader.__read_csv is None:
-					Loader.__read_csv = __import__("pandas").read_csv
-				return Loader.__read_csv(inputFilePath).to_dict(orient = "list")
+				return Loader.__loadDelimited(inputFilePath, delimiter = ",", encoding = encoding)
+			elif extension in (".htm", ".html"):
+				return Loader.__loadHTML(inputFilePath, encoding = encoding)
+			elif ".json" == extension:
+				return Loader.__loadJSON(inputFilePath, encoding = encoding)
+			elif ".tex" == extension:
+				return Loader.__loadTEX(inputFilePath, encoding = encoding)
 			elif ".tsv" == extension:
-				if Loader.__read_csv is None:
-					Loader.__read_csv = __import__("pandas").read_csv
-				return Loader.__read_csv(inputFilePath, sep = '\t').to_dict(orient = "list")
+				return Loader.__loadDelimited(inputFilePath, delimiter = '\t', encoding = encoding)
+			elif ".xls" == extension:
+				return Loader.__loadXLS(inputFilePath)
 			elif ".xlsx" == extension:
-				if Loader.__read_excel is None:
-					Loader.__read_excel = __import__("pandas").read_excel
-				return Loader.__read_excel(inputFilePath).to_dict(orient = "list")
+				return Loader.__loadXLSX(inputFilePath)
+			elif ".xml" == extension:
+				return Loader.__loadXML(inputFilePath)
+			elif extension in (".yaml", ".yml"):
+				return Loader.__loadYAML(inputFilePath, encoding = encoding)
 			else:
-				return ValueError("The extension {0} is currently unsupported. ".format(repr(originalExtension)))
+				return Loader.__loadTXT(inputFilePath, encoding = encoding)
 		except BaseException as e:
 			return e
 
@@ -444,21 +680,22 @@ class Drawer:
 			return TypeError("The mappings should be a dictionary containing several mappings from a string to a tuple or a list of numbers. ")
 
 class Analyzer:
-	def __init__(self:object, inputFilePaths:tuple|list|str, outputFilePath:str, caseSensitive:bool = False) -> object:
+	def __init__(self:object, inputFilePaths:tuple|list|str, outputFilePath:str, caseSensitive:bool = False, encoding:str = Parser.getDefaultEncoding()) -> object:
 		self.__inputFilePaths = inputFilePaths
 		self.__outputFilePath = outputFilePath
 		self.__caseSensitive = caseSensitive is True
-	def __load(self:object) -> dict|BaseException:
+		self.__encoding = encoding if isinstance(encoding, str) else Parser.getDefaultEncoding()
+	def __load(self:tuple|list|str) -> dict|BaseException:
 		if isinstance(self.__inputFilePaths, (tuple, list)):
 			index, length = 0, len(self.__inputFilePaths)
 			while index < length:
 				if isinstance(self.__inputFilePaths[index], str):
-					mappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive)
+					mappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive, encoding = self.__encoding)
 					if isinstance(mappings, dict):
 						keys = set(mappings.keys())
 						index += 1
 						while index < length: # for (++index; index < length; ++index)
-							currentMappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive)
+							currentMappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive, encoding = self.__encoding)
 							if isinstance(currentMappings, dict):
 								if set(currentMappings.keys()) == keys:
 									for key in mappings.keys():
@@ -476,7 +713,7 @@ class Analyzer:
 				index += 1
 			return ValueError("No strings were found in the unit of the input file paths. ")
 		elif isinstance(self.__inputFilePaths, str):
-			return Loader.load(self.__inputFilePaths, caseSensitive = self.__caseSensitive)
+			return Loader.load(self.__inputFilePaths, caseSensitive = self.__caseSensitive, encoding = self.__encoding)
 		else:
 			return TypeError("The input file path(s) should be a tuple, a list, or a string. ")
 	@staticmethod
@@ -548,24 +785,14 @@ class Analyzers:
 		.replace("<", "\\textless{}").replace(">", "\\textgreater{}").replace("^", "\\textasciicircum{}").replace("~", "\\textasciitilde{}")
 		for string in "".join(character for character in str(x) if ' ' <= character <= '~').split("\\")
 	)#####
-	__DefaultExtensions = {".csv", ".xlsx"}
-	__DefaultFormatString = Parser.getDefaultOutput()
 	__DefaultCompilationTimeout = 10#####
-	def __init__(self:object, *units:tuple, caseSensitive:bool = False, extensions:tuple|list|set|str = __DefaultExtensions, formatString:str = __DefaultFormatString) -> object:
+	def __init__(self:object, *units:tuple, caseSensitive:bool = False, encoding:str = Parser.getDefaultEncoding(), formatString:str = Parser.getDefaultOutput()) -> object:
 		self.__units = []
 		self.__analyzers = []
 		self.__caseSensitive = caseSensitive is True
 		self.__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
-		if isinstance(extensions, (tuple, list, set)):
-			if self.__caseSensitive:
-				self.__extensions = {extension for extension in extensions if isinstance(extension, str)}
-			else:
-				self.__extensions = {extension.lower() for extension in extensions if isinstance(extension, str)}
-		elif isinstance(extensions, str):
-			self.__extensions = {extensions if self.__caseSensitive else extensions.lower()}
-		else:
-			self.__extensions = __DefaultExtensions
-		self.__formatString = formatString if isinstance(formatString, str) else Analyzers.__DefaultFormatString
+		self.__encoding = encoding if isinstance(encoding, str) else Parser.getDefaultEncoding()
+		self.__formatString = formatString if isinstance(formatString, str) else Parser.getDefaultOutput()
 		self.updateUnits(*units if units else ".")
 	def __getUnitInputFilePaths(self:object, *paths:tuple) -> tuple:
 		inputFilePaths, stack = [], list(reversed(paths))
@@ -582,20 +809,15 @@ class Analyzers:
 						for root, directoryNames, fileNames in walk(element):
 							for fileName in fileNames:
 								absoluteFilePath = abspath(join(root, fileName))
-								if (
-									not islink(absoluteFilePath) and isfile(absoluteFilePath)
-									and self.__getFileExtension(fileName) in self.__extensions and absoluteFilePath not in inputFilePaths
-								):
+								if not islink(absoluteFilePath) and isfile(absoluteFilePath) and absoluteFilePath not in inputFilePaths:
 									filePaths.append(absoluteFilePath)
 						filePaths.sort()
 						inputFilePaths.extend(filePaths)
 						del filePaths
 					elif isfile(element):
-						fileName = basename(element)
-						if self.__getFileExtension(fileName) in self.__extensions:
-							absoluteFilePath = abspath(element)
-							if absoluteFilePath not in inputFilePaths:
-								inputFilePaths.append(absoluteFilePath)
+						absoluteFilePath = abspath(element)
+						if absoluteFilePath not in inputFilePaths:
+							inputFilePaths.append(absoluteFilePath)
 		return tuple(inputFilePaths)
 	def __format(self:object, _d:str = "", _n:str = "", _p:str = "", _x:str = "") -> str:
 		d, n, p, x = _d if isinstance(_d, str) else "", _n if isinstance(_n, str) else "", _p if isinstance(_p, str) else "", _x if isinstance(_x, str) else ""
@@ -640,20 +862,15 @@ class Analyzers:
 							for root, directoryNames, fileNames in walk(element):
 								for fileName in fileNames:
 									absoluteFilePath = abspath(join(root, fileName))
-									if (
-										not islink(absoluteFilePath) and isfile(absoluteFilePath)
-										and self.__getFileExtension(fileName) in self.__extensions and absoluteFilePath not in self.__units
-									):
+									if not islink(absoluteFilePath) and isfile(absoluteFilePath) and absoluteFilePath not in self.__units:
 										filePaths.append(absoluteFilePath)
 							filePaths.sort()
 							self.__units.extend(filePaths)
 							del filePaths
 						elif isfile(element):
-							fileName = basename(element)
-							if self.__getFileExtension(fileName) in self.__extensions:
-								absoluteFilePath = abspath(element)
-								if absoluteFilePath not in self.__units:
-									self.__units.append(absoluteFilePath)
+							absoluteFilePath = abspath(element)
+							if absoluteFilePath not in self.__units:
+								self.__units.append(absoluteFilePath)
 				except BaseException as e:
 					print("Analyzers: Some or all of {0} were not added to the units due to {1}. ".format(repr(element), repr(e)))
 			elif isinstance(element, dict) and "i" in element and isinstance(element["i"], (tuple, list, str)) and "o" in element and isinstance(element["o"], str):
@@ -669,13 +886,13 @@ class Analyzers:
 				dp, nx = split(self.__units[index])
 				d, p = splitdrive(dp)
 				n, x = splitext(nx)
-				self.__analyzers.append(Analyzer(self.__units[index], self.__format(_d = d, _n = n, _p = p, _x = x), caseSensitive = self.__caseSensitive))
+				self.__analyzers.append(Analyzer(self.__units[index], self.__format(_d = d, _n = n, _p = p, _x = x), caseSensitive = self.__caseSensitive, encoding = self.__encoding))
 				index += 1
 			elif (
 				isinstance(self.__units[index], dict) and "i" in self.__units[index] and isinstance(self.__units[index]["i"], tuple)
 				and "o" in self.__units[index] and isinstance(self.__units[index]["o"], str)
 			):
-				self.__analyzers.append(Analyzer(self.__units[index]["i"], self.__units[index]["o"], caseSensitive = self.__caseSensitive))
+				self.__analyzers.append(Analyzer(self.__units[index]["i"], self.__units[index]["o"], caseSensitive = self.__caseSensitive, encoding = self.__encoding))
 				index += 1
 			else:
 				del self.__units[index]
@@ -694,10 +911,10 @@ class Analyzers:
 
 
 def main() -> int:
-	flag, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = Parser.parse(argv)
+	flag, encoding, outputPathWithoutAnExtension, decimalPlace, waitingTime, units = Parser.parse(argv)
 	Parser.disableConsoleEchoes()
 	if flag > EXIT_SUCCESS and flag > EOF:
-		analyzers = Analyzers(units, extensions = {".csv", ".xlsx"}, formatString = outputPathWithoutAnExtension)
+		analyzers = Analyzers(units, encoding = encoding, formatString = outputPathWithoutAnExtension)
 		totalCount = len(analyzers)
 		if totalCount >= 1:
 			successCount = analyzers.analyze()

@@ -14,6 +14,8 @@ This repository serves as a systematic collection of multiple cryptographic sche
   - [SchemeCANIPSI.py](./SchemeCANIFPPCT/SchemeCANIPSI.py)
   - [SchemeCANIFPPCT.java](./SchemeCANIFPPCT/SchemeCANIFPPCT.java)
   - [SchemeCANIFPPCT.py](./SchemeCANIFPPCT/SchemeCANIFPPCT.py)
+- [SchemeCoefficientComputation](./SchemeCoefficientComputation/)
+  - [SchemeCoefficientComputation.py](./SchemeCoefficientComputation/SchemeCoefficientComputation.py)
 - [SchemeFSMUAEKS](./SchemeFSMUAEKS/)
   - [SchemeFSMUAEKS.java](./SchemeFSMUAEKS/SchemeFSMUAEKS.java)
   - [SchemeFSMUAEKS.py](./SchemeFSMUAEKS/SchemeFSMUAEKS.py)
@@ -76,7 +78,7 @@ This repository serves as a systematic collection of multiple cryptographic sche
   - [SchemeVPSICAAlg4.cpp](./SchemeVPSICA/SchemeVPSICAAlg4.cpp)
   - [SchemeVPSICAAlg5.cpp](./SchemeVPSICA/SchemeVPSICAAlg5.cpp)
 
-Programming languages, along with their third-party dependencies, used in this repository are as follows. 
+Programming languages, along with their third-party dependencies (only the ones for executing cryptographic schemes listed), used in this repository are as follows. 
 Most of the cryptographic schemes here are pairing-based, which are implemented based on the PBC library and its variants. 
 Some cryptographic schemes have multiple implementations in different programming languages. 
 Although we have made every effort to ensure their equivalence across different programming languages, 
@@ -94,7 +96,9 @@ In principle, all the experiments should also be capable of being conducted on t
 ## 1. Python
 
 For most of the cryptographic schemes here, especially those whose names start with "Scheme", Python implementations are highly recommended. 
-Please deploy Python 3.12 or above and the Python Charm-Crypto framework correctly. It is highly recommended to keep both Python and the Python Charm-Crypto framework up to date. 
+Please deploy Python 3.12 or above and the Python Charm-Crypto framework correctly. The lower bound of the Python version is limited by the latest Python Charm-Crypto framework. 
+If you are using a Python Charm-Crypto framework version that correctly supports Python 3.11 and earlier, the minimum Python version required in this repository is 3.10 due to type annotation syntax support. 
+It is highly recommended to keep both Python and the Python Charm-Crypto framework up to date. 
 
 This section will first introduce the implementation and computation details. Subsequently, converting the official Python scripts to LaTeX sources will be presented. 
 Eventually, measurements and git issues will be discussed. 
@@ -106,7 +110,13 @@ Eventually, other relevant implementation issues are presented.
 
 #### 1.1.1 System and Python environments
 
-To start with, the Python environments must be resolved. As installing Python directly via the system's package manager 
+To start with, the Python environments must be resolved. 
+
+On the Windows operating system, the optimal way to install the latest Python is to download [the executable installer of the latest Python](https://www.python.org/downloads/) via the official website 
+and install the latest Python by following the instructions in the Graphical User Interface (GUI) step by step. Please try to install Python for all users. 
+Make sure ``python.exe`` and the ``scripts`` directory of the corresponding Python are in the ``%PATH%`` after the installation. 
+
+Among Unix(-like) systems, it is recommended to use Ubuntu. As installing Python directly via the system's package manager 
 (e.g., ``sudo apt install python3``, ``sudo apt-get install python3``, ``sudo yum install python3``, ``sudo dnf install python3``, and ``pkg install python3``) 
 will cause the management of Python libraries from the Python pip to be taken over by the system's package manager, which is quite annoying and inconvenient 
 (especially when executing ``pip install`` and ``python -m pip install --upgrade pip``), we strongly recommend manually installing the latest Python. 
@@ -146,16 +156,16 @@ To test the Python Charm-Crypto framework environment initially, please try to e
 which is also essentially how all of the Python scripts based on the Python Charm-Crypto framework in this repository import the Python Charm-Crypto framework. 
 
 We have tried our best to reduce dependencies on third-party libraries. 
-However, to support some binary file types in savers, [several third-party libraries](./requirements.txt) are still required to be satisfied. 
-In the root directory of this repository, there is a file entitled ``requirements.txt``. 
-For easy deployment, users can run ``python -m pip install -r requirements.txt`` after navigating (``cd`` or ``cd /d``) into the root directory of this repository. 
+However, to support some binary file types in savers and the loader, several third-party libraries are still required to be satisfied. 
+The requirements are specified in the ``requirements.txt`` files located at each directory level under this repository. 
+For easy deployment, users can run ``python -m pip install -r requirements.txt`` after navigating (``cd`` or ``cd /d``) into the corresponding directory. 
 If the Python libraries are managed externally (e.g., being taken over by the system's package manager), please handle the environments manually, 
 or reinstall the Python environments manually according to the above tutorials. 
 
-Additionally, if installing ``libcst`` fails due to a higher version of Python, please try the following commands to install it separately. 
+Additionally, on Unix(-like) systems, if installing ``libcst`` fails due to a higher version of Python, please try the following commands to install it separately. 
 Or, skip installing ``libcst`` if ``buildSchemeLaTeXPDFs.py`` will not be used. Please refer to the subsequent subsections for the details of this Python script. 
 
-```
+```shell
 export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 python -m pip install libcst
 ```
@@ -184,7 +194,7 @@ Literals like "----000x0052_eF.33__44 *" can still be recognized as 21231.200256
 4) Remove the leading zeros from the string obtained in **Step 3**. 
 5) Check the first character of the string obtained in **Step 4**. If it is a digit (``[0-9]``), proceed to **Step 6**. Otherwise, proceed to **Step 7**. 
 6) Check the last character of the string obtained in **Step 4**. If it matches any of the following itemized rules, proceed to **Step 8**. Otherwise, proceed to **Step 10**. 
-7) If the first character of the string obtained in **Step 4** matches any of the following itemized rules, proceed to Step 9). Otherwise, proceed to **Step 10**. 
+7) If the first character of the string obtained in **Step 4** matches any of the following itemized rules, proceed to **Step 9**. Otherwise, proceed to **Step 10**. 
 8) Define radix accordingly and define the numeric part as the string obtained in **Step 4** without the last character. Proceed to **Step 11**. 
 9) Define radix accordingly and define the numeric part as the string obtained in **Step 4** without the first character. Proceed to **Step 11**. 
 10) Define radix as 10 and define the numeric part as the string obtained in **Step 4**. Proceed to **Step 11**. 
@@ -261,7 +271,48 @@ for extension in (".csv", ".htm", ".html", ".json", ".tex", ".tsv", ".txt", ".xl
 	saver.save(results)
 ```
 
-#### 1.1.4 Exit status
+#### 1.1.4 Loader
+
+The performance analyzer (``analyze.py``) implements a Loader class for loading the experimental results saved by the savers mentioned above. 
+Input file types currently supported are as follows, along with their dependencies, input layouts, and character handling rules. 
+The third-party dependencies are optional, which are only required when the corresponding input file types are to be loaded. 
+While the loader will retrieve the input file type from the extension of the specified input file path in a case-insensitive manner by default, 
+the retrieval can be switched to a case-sensitive manner via the corresponding option. 
+Textual input files will be read with the encoding specified by the command-line encoding option (UTF-8 by default), except that the encoding of XML inputs will be detected from the XML declaration. 
+XLS and XLSX inputs are stored in binary. 
+
+| Type | Dependency | Input layout | Character handling |
+| - | - | - | - |
+| CSV | ``__import__("csv").reader`` | The first row as the column names | Parse characters according to CSV format rules |
+| HTM | No extra libraries to import | The first table row as the column names | Unescape characters according to HTML format rules |
+| HTML | No extra libraries to import | The first table row as the column names | Unescape characters according to HTML format rules |
+| JSON | ``__import__("json").load`` | ``{"columns": [...], "results": [...]}`` | Unescape characters according to JSON format rules |
+| TEX | No extra libraries to import | The booktabs table between ``\toprule`` and ``\bottomrule`` | Unescape ``\textbf{}``, inline math delimiters, escaped characters, and ``~`` paddings |
+| TSV | ``__import__("csv").reader`` | The first row as the column names | Parse characters according to TSV format rules |
+| TXT | No extra libraries to import | ``{"columns": [...], "results": [...]}`` written by ``str`` | Unescape characters according to Python literal rules |
+| XLS | ``xlrd`` | The first worksheet, with the first row as the column names | No character unescaping due to binary storing |
+| XLSX | ``openpyxl`` | The first worksheet, with the first row as the column names | No character unescaping due to binary storing |
+| XML | No extra libraries to import | ``<data>/<columns>/<column>`` and ``<data>/<results>/<result>/<r>`` | Unescape characters according to XML format rules |
+| YAML | ``__import__("json").loads`` | The ``columns:`` and ``results:`` sections | Unescape characters according to JSON format rules |
+| YML | ``__import__("json").loads`` | The ``columns:`` and ``results:`` sections | Unescape characters according to JSON format rules |
+
+Each input file will be converted into a Python ``dict`` object, which maps each column name to the list of the values in that column. 
+During the value coercion, the case-insensitive strings ``true`` and ``false`` will be converted to ``True`` and ``False``, respectively, 
+strings representing integers and decimals will be converted to ``int`` and ``float`` objects, respectively, and other values will be kept unchanged. 
+If repeated column names are found in the input file, a ``KeyError`` object will be returned. 
+If a row contains fewer cells than the column names, the missing cells will be padded with empty strings. 
+Instead of raising base exceptions, the loader will return the base exception objects to the callers, so that the analyzer can uniformly report the loading interruptions. 
+Input files with unrecognized extensions or failed to be loaded in non-TXT recognized extensions will be loaded in the TXT format. 
+
+The following Python code can be used to test the loader. 
+
+```python
+for extension in (".csv", ".htm", ".html", ".json", ".tex", ".tsv", ".txt", ".xls", ".xlsx", ".xml", ".yaml", ".yml"):
+	mappings = Loader.load("test" + extension)
+	print(extension, mappings)
+```
+
+#### 1.1.5 Exit status
 
 The principles of the exit status are as follows. 
 
@@ -269,7 +320,7 @@ The principles of the exit status are as follows.
 - For all the Python scripts here, an ``EXIT_FAILURE`` ($1$) status will be returned to its parent process if no results are obtained or any of the results fail any of the tests. 
 - For all the Python scripts here, an ``EOF`` ($-1$) status will be returned to its parent process if the program lacks any of the necessary libraries. 
 
-#### 1.1.5 Other relevant implementation issues
+#### 1.1.6 Other relevant implementation issues
 
 Normally, executing ``python Scheme*/Scheme*.py`` should work fine, with all the command-line arguments set to defaults, where the ``*`` here can refer to different strings excluding the path separators. 
 
@@ -282,12 +333,12 @@ The following commands can be useful for one-stop testing.
 - On Windows operating systems
   - Execute ``for %f in (*.py) do python "%f" Y 0`` after navigating (``cd /d``) into the specified directory in a terminal to run all the Python scripts in that directory if a category of Python scripts is to be executed. 
   - Execute ``for /r %f in (*.py) do python "%f" Y 0`` after navigating (``cd /d``) into the root directory of this repository in a terminal to execute all the Python scripts in this repository if all categories of Python scripts are to be executed. 
-  - Add `` > NUL 2>&1`` to the end of the command lines if the printing affects the computation of the time consumption in a terminal. 
+  - Add `` > NUL 2>&1`` to the end of the command lines if printing affects the computation of the time consumption in a terminal. 
 
 To enhance robustness, type checks will be performed in each scheme procedure, whether or not they are explicitly required in the paper. 
 Actually, type checks are forcibly conducted during the compilation stage in compiled programming languages (e.g., C, C++, and Java). 
 
-The Python scripts here are designed to try their best to avoid the console window flashing by when they are launched via a double-click. 
+The Python scripts here are designed to avoid the console window flashing when launched by double-clicking. 
 In a real production environment, users may not necessarily open a terminal first to receive the standard output stream or error output stream left behind after the crash. 
 Thus, scheme procedures are surrounded by the ``try--except KeyboardInterrupt--except BaseException as e`` structure to catch as many base exceptions as possible. 
 If debugging is needed, ``except BaseException as e`` can be commented out, and the detailed base exceptions can be left on the terminal for analysis. 
@@ -317,10 +368,12 @@ Nowadays, many published implementations cannot run directly after they are down
 - Some of them are just due to outdated dependencies (V). 
 - Some require feasible environment configurations or debugging (V). 
 - Some are abstracted or interactive to let users specify values for important parameters before running due to programmability (V). 
-- Some are modified not to run conveniently since their authors still want to benefit from them and publish more future papers, but have to make them open-source (X). 
+- Some are modified to avoid being run conveniently since their authors still want to benefit from them and publish more future papers, but have to make them open-source (X). 
 - Some are modified maliciously since their authors do not want the experiments re-implemented, where the results would be found to be fakes (X). 
 - Some are fakes in either the methodologies designed or the practical implementations, or in both. (X)
+- Some assign a value to a variable multiple times without anything actual done (X). 
 - Some are inconsistent with or unrelated to the content of the paper (X). 
+- Some require environments that can never be known how to configure (X). 
 - Some even contain grammar errors (X). 
 
 Anyway, re-implementing baselines is always a wise choice. Converting the baseline implementations using the aligned styles is also necessary, 
@@ -466,7 +519,7 @@ $$
 \end{align}\right.
 $$
 
-Here come the issues of the computing methodology above. If we directly compute the coefficients as the system of equations shown above, that is, to calculate the first-order sum, second-order sum, $\cdots$, 
+Here come the issues with the computing methodology above. If we directly compute the coefficients as the system of equations shown above, that is, to calculate the first-order sum, second-order sum, $\cdots$, 
 and finally the highest-order sum based on the $\mathrm{C}_n^1, \mathrm{C}_n^2, \cdots, \mathrm{C}_n^n$ combinations of all the roots, 
 it will take plenty of extra computing power to achieve the combinations in addition to the $n$ sum operations, 
 whose overall time complexity is $O(\mathrm{C}_n^1 + \mathrm{C}_n^2 + \cdots + \mathrm{C}_n^n + n) = O(2^n - 1 + n) = O(2^n - 1 + n)$. 
@@ -658,7 +711,9 @@ def __computeCoefficients(self:object, roots:tuple|list, k:Element|int|float|Non
 		return (k, )
 ```
 
-The corresponding procedures of the final method are shown as follows. In this problem, the coefficient of the highest-order term is always $1$, which should be omitted to save space complexity. Nonetheless, in practice, it is retained to meet the academic program specifications and space measurement requirements. By the way, this ``1`` is assigned to the corresponding ``1`` according to the type of the roots, and it never involves any computation throughout the script. 
+The corresponding procedures of the final method are shown as follows. In this problem, the coefficient of the highest-order term is always $1$, which should be omitted to save space complexity. 
+Nonetheless, in practice, it is retained to meet the academic program specifications and space measurement requirements. 
+By the way, this ``1`` is assigned to the corresponding ``1`` according to the type of the roots, and it never involves any computation throughout the script. 
 
 | Coefficients ($\uparrow$) | $c_0$ | $c_1$ | $c_2$ | $c_3$ | | Coefficients ($\downarrow$) | $c_0$ | $c_1$ | $c_2$ | $c_3$ |
 | - | - | - | - | - | - | - | - | - | - | - |
@@ -674,10 +729,14 @@ The corresponding procedures of the final method are shown as follows. In this p
 
 #### 1.2.6 Polynomial computation
 
-The polynomial computation here refers to the computation of $F(x)$ mentioned in the previous subsubsection based on the corresponding coefficients figured out. At first, the computation is accomplished by ``sum(coefficients[i] * x ** i for i in range(n + 1))``. The built-in function ``sum`` will initialize the integer ``0`` instead of assigning the first value to the initialization symbol, which can cause potential computational errors. 
-As elements should be regarded as numeric types that should not be rejected by ``sum``, this can be solved by specifying the ``start`` value. However, as polynomial computation involves exponential operations, ``x ** 2`` and ``x ** self.__group.init(ZR, 2)`` can be inconsistent with ``x * x`` for any ``x`` belonging to the ``Element`` type in some versions of the Python Charm-Crypto framework library. Therefore, the following method is designed. 
+The polynomial computation here refers to the computation of $F(x)$ mentioned in the previous subsubsection based on the corresponding coefficients figured out. 
+At first, the computation is accomplished by ``sum(coefficients[i] * x ** i for i in range(n + 1))``. 
+The built-in function ``sum`` will initialize the integer ``0`` instead of assigning the first value to the initialization symbol, which can cause potential computational errors. 
+As elements should be regarded as numeric types that should not be rejected by ``sum``, this can be solved by specifying the ``start`` value. 
+However, as polynomial computation involves exponential operations, ``x ** 2`` and ``x ** self.__group.init(ZR, 2)`` can be inconsistent with ``x * x`` for any ``x`` 
+belonging to the ``Element`` type in some versions of the Python Charm-Crypto framework library. Therefore, the following method is designed. 
 
-```
+```python
 def __computePolynomial(self:object, x:Element, coefficients:tuple|list) -> Element:
 	if isinstance(x, Element) and x.type == ZR and isinstance(x, int) and isinstance(coefficients, (tuple, list)) and all(isinstance(coefficient, Element) and coefficient.type == ZR and isinstance(coefficient, int) for coefficient in coefficients):
 		eleResult = coefficients[0]
@@ -693,7 +752,7 @@ def __computePolynomial(self:object, x:Element, coefficients:tuple|list) -> Elem
 
 However, due to similar issues, this method is revised as follows. The $n$ here corresponds to that in the coefficient computation. Similarly, the coefficient of the highest-order term, $1$, never involves any computation throughout the script. 
 
-```
+```python
 def __computePolynomial(self:object, x:Element|int|float, coefficients:tuple|list) -> Element|int|float|None:
 	if isinstance(coefficients, (tuple, list)) and coefficients and (															\
 		isinstance(x, Element) and all(isinstance(coefficient, Element) and coefficient.type == x.type for coefficient in coefficients)	\
@@ -718,7 +777,7 @@ def __computePolynomial(self:object, x:Element|int|float, coefficients:tuple|lis
 
 On some occasions, we are required to compute the Lagrange coefficients. 
 
-```
+```python
 def __computeLagrangeCoefficients(self:object, xPoints:tuple|list, yPoints:tuple|list, x:Element) -> Element:
 	if isinstance(xPoints, (tuple, list)) and isinstance(yPoints, (tuple, list)) and len(xPoints) == len(yPoints) and all(isinstance(ele, Element) and ele.type == ZR for ele in xPoints) and all(isinstance(ele, Element) and ele.type == ZR for ele in yPoints) and isinstance(x, Element) and x.type == ZR:
 		n, result = len(xPoints), self.__group.init(ZR, 1)
@@ -737,7 +796,7 @@ def __computeLagrangeCoefficients(self:object, xPoints:tuple|list, yPoints:tuple
 
 On some occasions, we need to concatenate multiple objects, acting as byte concatenation. Please kindly refer to the following lines. 
 
-```
+```python
 def __concat(self:object, *vector:tuple|list) -> bytes:
 	abcBytes = b""
 	if isinstance(vector, (tuple, list)):
@@ -769,7 +828,7 @@ Apart from these two core measurements, the time and space complexities are the 
 To compute the time consumption (time complexity) of a code block, please refer to the following lines. 
 Remember to perform a division if a procedure contains computation for multiple objects, while only the computation procedure of one of those objects should be counted. 
 
-```
+```python
 from time import perf_counter
 
 startTime = perf_counter()
@@ -790,7 +849,7 @@ This may result in the overall operation being inferior to the solution without 
 During development, time consumption comparison for different implementations of the same solution is a frequent requirement. 
 The following Python script can be used to compare different implementations of the same solution in time consumption. Select the optimal one in practice after comparing via this script. 
 
-```
+```python
 from sys import exit
 from math import ceil
 from time import perf_counter
@@ -837,14 +896,14 @@ if "__main__" == __name__:
 
 To compute the memory consumption (space complexity) of a variable for academic purposes (actually, the byte length of the serialized element), please refer to the following lines. 
 Since some cryptographic schemes write all curve system parameters, such as $\mathbb{G}_1$ and $p$, into $\textit{mpk}$, some write only some of them, and some do not write them at all, 
-here, in actual implementation, these parameters will not be put into $\textit{mpk}$ and therefore will not be counted in the following lines. 
+here, in the actual implementation, these parameters will not be put into $\textit{mpk}$ and therefore will not be counted in the following lines. 
 The code ``(group.secparam + 7) >> 3`` is a consideration of $\lambda$ values that do not meet $8 | \lambda$. 
 After filling several bytes, any remaining one or more bits will occupy an additional byte, even if they do not form a complete byte. 
 Specifically, some hash functions and concatenated ``bytes`` objects may return an integer whose actual byte length is longer than $\lambda$. 
-This case is seldom, but actually exists. When designing the measurement function in the scripts containing such a situation, the space complexity of the special variables needs to be assigned manually. 
+This case is rare, but it actually exists. When designing the measurement function in the scripts containing such a situation, the space complexity of the special variables needs to be assigned manually. 
 Additionally, as some special callable elements exist in ``SchemeIBPRME/SchemeIBPME.py``, this function has been designed separately in this Python script. 
 
-```
+```python
 def getLengthOf(self:object, obj:Element|int|bytes|tuple|list|set|dict) -> int|str:
 	if isinstance(obj, Element):
 		return len(self.__group.serialize(obj))
@@ -873,7 +932,7 @@ s = getsizeof(group.random(ZR)) # Byte(s)
 
 The measurements above are used to measure the space complexity of a variable. 
 To compute the overall runtime memory consumption (space complexity) of the Python program, please refer to the following lines. 
-These codes are not used in the official implementations of the cryptographic schemes here. One should adjust the codes in one's own repositories if one wishes to implement this measurement. 
+These codes are not used in the official implementations of the cryptographic schemes here. One should adjust the scripts in one's own repositories if one wishes to implement this measurement. 
 
 ```
 import os
@@ -946,20 +1005,24 @@ If it is necessary to log in while pushing, please try the ``gh auth login`` com
 
 The Java programming language was first used to implement the cryptographic schemes here for experimental purposes in earlier days (~2019). 
 At that time, each of them was implemented in a separate repository. 
-As the JDK has gradually evolved, the Java official has twice removed the APIs for object memory computation, forcing us to write three versions of the space complexity computation for each cryptographic scheme. 
+As the JDK has gradually evolved, the Java official has twice removed the APIs for object memory computation, 
+forcing us to write three versions of the space complexity computation for each cryptographic scheme. 
 These result in many non-systematic repositories. 
-Although we have tried our best to update and link the repositories with each other, it is still inconvenient to jump from one repository to another, especially for cryptographic schemes that have many and repeated baselines. 
+Although we have tried our best to update and link the repositories with each other, it is still inconvenient to jump from one repository to another, 
+especially for cryptographic schemes that have many and repeated baselines. 
 
 Subsequently, we were told to use the object's length as the space complexity. 
 Meanwhile, the official websites storing the original JPBC libraries seemed down. 
 Therefore, we started to write Python implementations for new cryptographic schemes based on the [Python Charm-Crypto framework](https://github.com/JHUISI/charm). 
 As this repository becomes more and more systematic, we think that it is time to merge the non-systematic Java implementation repositories into a collection here. 
 Moreover, we have decided to remove the outdated object memory computation implementations and unify the space complexity computation to how Python implementations do in this repository. 
-Every Python implementation whose file name starts with ``Scheme`` now has a corresponding single-file Java implementation. Both implementations retain the same experiment stages, command-line interface, result columns, and console validation wording where the underlying libraries permit equivalent behavior. 
+Every Python implementation whose file name starts with ``Scheme`` now has a corresponding single-file Java implementation. 
+Both implementations retain the same experiment stages, command-line interface, result columns, and console validation wording where the underlying libraries permit equivalent behavior. 
 
 ### 2.1 Java environment, dependencies, inputs, and outputs
 
-The current Java implementation and its dependencies require JDK 17 or above and are executed in source-file mode. The [``runJava`` workflow](./.github/workflows/runJava.yml) uses Eclipse Temurin and defaults to JDK 25. 
+The current Java implementation and its dependencies require JDK 17 or above and are executed in source-file mode. 
+The [``runJava`` workflow](./.github/workflows/runJava.yml) uses Eclipse Temurin and defaults to JDK 25. 
 
 The two discontinued JPBC libraries, ``jpbc-api-2.0.0.jar`` and ``jpbc-plaf-2.0.0.jar``, are kept under the ``lib`` directory. 
 Meanwhile, the Excel saver additionally uses Apache POI and its supporting libraries, which are listed as follows. 
@@ -989,11 +1052,15 @@ The output formats currently supported are CSV, HTM, HTML, JSON, LaTeX, TSV, TXT
 If an output path passed through the command line is relative, it is resolved against the directory containing the executed Java source file instead of the current working directory.
 Pass ``-h`` to view all case-insensitive command-line options, including the encoding, output path, decimal place, quiet mode, run count, waiting time, and overwrite confirmation options.
 
-The Java program exits with ``EXIT_SUCCESS`` ($0$) when results are obtained and all validation checks pass, and with ``EXIT_FAILURE`` ($1$) otherwise. Invalid arguments result in ``EOF`` ($-1$; normally observed as $255$ on POSIX shells).
+The Java program exits with ``EXIT_SUCCESS`` ($0$) when results are obtained and all validation checks pass, and with ``EXIT_FAILURE`` ($1$) otherwise. 
+Invalid arguments result in ``EOF`` ($-1$; normally observed as $255$ on POSIX shells).
 
-JPBC 2.0.0 bundles generators for the symmetric Type A and asymmetric Type F pairings used here. Accordingly, the Java implementations map ``SS512`` and ``SS1024`` to Type A parameters and ``BN254`` to Type F parameters. Exact ``MNT201`` and ``MNT224`` parameter resources are not included in the distributed JPBC JARs, so those experiment rows are reported as unavailable instead of silently substituting another curve.
+JPBC 2.0.0 bundles generators for the symmetric Type A and asymmetric Type F pairings used here. 
+Accordingly, the Java implementations map ``SS512`` and ``SS1024`` to Type A parameters and ``BN254`` to Type F parameters. 
+Exact ``MNT201`` and ``MNT224`` parameter resources are not included in the distributed JPBC JARs, so those experiment rows are reported as unavailable instead of silently substituting another curve.
 
-The [``runJava`` workflow](./.github/workflows/runJava.yml) exposes the seven scheme categories as manual inputs and executes each selected ``Scheme*.java`` file independently. On pull requests and pushes, all categories except the particularly large VLPSICA parameter matrix are enabled by default.
+The [``runJava`` workflow](./.github/workflows/runJava.yml) exposes the seven scheme categories as manual inputs and executes each selected ``Scheme*.java`` file independently. 
+On pull requests and pushes, all categories except the particularly large VLPSICA parameter matrix are enabled by default.
 
 ### 2.2 Time complexity
 
@@ -1038,7 +1105,12 @@ Meanwhile, space measurements other than the computation of the object length wi
 
 ## 3. C++
 
-The seven physical implementations under [``SchemeVPSICA``](./SchemeVPSICA/), [``SchemeOPSICA``](./SchemeOPSICA/), and [``SchemeSPSICA``](./SchemeSPSICA/) are standalone C++17 programs. Each source contains its own command-line parser and result saver and does not depend on a shared header. The OPSI-CA and SPSI-CA directories also provide a symbolic link to the PSI-CA baseline under ``SchemeVPSICA``. Their algorithms and result formatting use the C++17 standard library, and they use no third-party libraries. The saver's file-publication path uses Ubuntu/POSIX APIs, so these implementations target Ubuntu/POSIX and compilation on Windows is rejected. These files do not require PBC or the pairing-based dependencies used by other C/C++ implementations in this repository.
+The seven physical implementations under [``SchemeVPSICA``](./SchemeVPSICA/), [``SchemeOPSICA``](./SchemeOPSICA/), and [``SchemeSPSICA``](./SchemeSPSICA/) are standalone C++17 programs. 
+Each source contains its own command-line parser and result saver and does not depend on a shared header. 
+The OPSI-CA and SPSI-CA directories also provide a symbolic link to the PSI-CA baseline under ``SchemeVPSICA``. 
+Their algorithms and result formatting use the C++17 standard library, and they use no third-party libraries. 
+As the saver's file-publication path uses Ubuntu/POSIX APIs, these implementations target Ubuntu/POSIX, and compilation on Windows is rejected. 
+These files do not require PBC or the pairing-based dependencies used by other C/C++ implementations in this repository.
 
 ### 3.1 C++ environment, inputs, and outputs
 
@@ -1067,7 +1139,7 @@ All aliases in the following table are case-insensitive. Pass ``-h`` to print th
 | Waiting time | ``t``, ``/t``, ``-t``, ``time``, ``/time``, ``--time`` |
 | Overwrite confirmation | ``y``, ``/y``, ``-y``, ``yes``, ``/yes``, ``--yes`` |
 
-Only UTF-8 (``UTF-8`` or ``UTF8``) is accepted for the encoding. The default output is ``<program>.csv``, the default decimal place is 9, the default run count is 10, and the default waiting time is infinity. These seven entry points use noninteractive parser and exit handling, so the infinite default does not pause for terminal input; specify ``-t 0`` to make immediate exit explicit in scripts.
+Only UTF-8 (``UTF-8`` or ``UTF8``) is accepted for the encoding. The default output is ``<program>.csv``, the default decimal place is 9, the default run count is 10, and the default waiting time is infinity. These seven entry points use a noninteractive parser and exit handling, so the infinite default does not pause for terminal input; specify ``-t 0`` to make immediate exit explicit in scripts.
 
 A relative output path is resolved against the executable's directory, not the current working directory. If ``-o`` names a directory path (an existing directory or a path ending in a directory separator), the program appends its default ``<program>.csv`` file name. If parsing produces a protected source or script extension, that extension is reset to ``.csv``; the saver independently rejects a protected extension if one reaches it directly.
 
@@ -1089,7 +1161,7 @@ For time consumption computation in or after September 2024, better time consump
 
 The recent period has witnessed the ``#include<chrono>`` reach a computation level of nanoseconds. Users can modify the time consumption computation codes in this repository to make the timing more exact. 
 
-The following codes may be useful for cross-platform universal improvements. 
+The following macros may be useful for cross-platform universal improvements. 
 
 ```cpp
 #if defined WIN32 || defined _WIN32 || defined _WIN64
