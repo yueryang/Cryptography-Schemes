@@ -774,7 +774,7 @@ def conductScheme(parameter:tuple|list|dict, run:int|None = None, isVerbose:bool
 			print("Is the system valid? No. The execution failed due to {0}. ".format(repr(e)))
 			print()
 	return [
-		NString, nString, qString, runString,
+		Parser.getSchemeName(), NString, nString, qString, runString,
 		isSystemValid, isSchemeCorrect,
 		timeSetup, timeKeyExtract, timeKeyUpdate, timeSign, timeVerify, timeLink,
 		sizePublicParameters, sizeSecretKeys, sizePublicKeys, sizeUpdatedKey, sizeSignature, sizeLinkedSignature
@@ -796,7 +796,7 @@ def main() -> int:
 
 			# Parameters #
 			parameters = ((2, 4, 251), (4, 4, 251))
-			queries = ("N", "n", "q", "runCount")
+			queries = ("scheme", "N", "n", "q", "runCount")
 			validators = ("isSystemValid", "isSchemeCorrect")
 			metrics = (
 				"Setup (s)", "KeyExtract (s)", "KeyUpdate (s)", "Sign (s)", "Verify (s)", "Link (s)",

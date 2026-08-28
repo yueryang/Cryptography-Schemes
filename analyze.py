@@ -691,12 +691,12 @@ class Analyzer:
 			while index < length:
 				if isinstance(self.__inputFilePaths[index], str):
 					mappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive, encoding = self.__encoding)
-					if isinstance(mappings, dict):
+					if isinstance(mappings, dict) and all(isinstance(key, str) for key in mappings.keys()):
 						keys = set(mappings.keys())
 						index += 1
 						while index < length: # for (++index; index < length; ++index)
 							currentMappings = Loader.load(self.__inputFilePaths[index], caseSensitive = self.__caseSensitive, encoding = self.__encoding)
-							if isinstance(currentMappings, dict):
+							if isinstance(currentMappings, dict) and all(isinstance(key, str) for key in currentMappings.keys()):
 								if set(currentMappings.keys()) == keys:
 									for key in mappings.keys():
 										mappings[key].extend(currentMappings[key])
@@ -725,25 +725,22 @@ class Analyzer:
 			return IOError("Failed to load mappings from {0} due to {1}. ".format(repr(self.__inputFilePaths), repr(mappings)))
 		elif isinstance(mappings, dict) and all(isinstance(key, str) and Analyzer.__checkValues(value) for key, value in mappings.items()) and len(set(len(value) for value in mappings.values())) == 1:
 			variables = tuple(mappings.keys())
-			if "solution" in variables:
-				groupingVariableIndex = variables.index("solution")
-			elif "scheme" in variables:
-				groupingVariableIndex = variables.index("scheme")
+			lowercaseVariables = tuple(variable.lower() for variable in variables)
+			for possibleGroupingVariableName in ("solution", "scheme", "algorithm"):
+				if possibleGroupingVariableName in lowercaseVariables:
+					groupingVariableIndex = lowercaseVariables.index(possibleGroupingVariableName)
+					break
 			else:
-				return ValueError("Failed to find a suitable group key in mappings. ")
-			if "secparam" in variables:
-				secparamVariableIndex = variables.index("secparam")
-			else:
-				return ValueError("Failed to locate the security parameter key in mappings. ")
+				return ValueError("Failed to find a suitable grouping key in the mappings. ")
 			if "runCount" in variables:
 				runCountVariableIndex = variables.index("runCount")
 			else:
 				return ValueError("Failed to locate the run count key in mappings. ")
 			dependentVariableIndexes = tuple(variableIndex for variableIndex, variableName in enumerate(variables) if (
-				variableName.endswith("(s)") or (variableName.endswith("(B)") and not variableName.startswith("elementOf"))
+				variableName.endswith("(s)") or (variableName.endswith("(B)") and not variableName.startswith("elementOf")) or (variableName.startswith("$") and variableName.endswith("$"))
 			))
-			if dependentVariableIndexes and secparamVariableIndex < runCountVariableIndex and runCountVariableIndex < dependentVariableIndexes[0]:
-				independentVariableIndexes = tuple(variableIndex for variableIndex in range(secparamVariableIndex, runCountVariableIndex) if variableIndex != groupingVariableIndex)
+			if dependentVariableIndexes and runCountVariableIndex < dependentVariableIndexes[0]:
+				independentVariableIndexes = tuple(variableIndex for variableIndex in range(runCountVariableIndex) if variableIndex != groupingVariableIndex)
 				validationVariableIndexes = tuple(variableIndex for variableIndex in range(runCountVariableIndex, dependentVariableIndexes[0]))
 				validationVariableNames = tuple(variables[variableIndex] for variableIndex in validationVariableIndexes)
 				for valueIndex in range(len(next(iter(mappings.values()))) - 1, -1, -1): # remove failed experiments

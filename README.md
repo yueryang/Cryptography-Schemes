@@ -275,7 +275,7 @@ for extension in (".csv", ".htm", ".html", ".json", ".tex", ".tsv", ".txt", ".xl
 
 The performance analyzer (``analyze.py``) implements a Loader class for loading the experimental results saved by the savers mentioned above. 
 Input file types currently supported are as follows, along with their dependencies, input layouts, and character handling rules. 
-The third-party dependencies are optional, which are only required when the corresponding input file types are to be loaded. 
+The third-party dependencies are optional and are only required when the corresponding input file types are to be loaded. 
 While the loader will retrieve the input file type from the extension of the specified input file path in a case-insensitive manner by default, 
 the retrieval can be switched to a case-sensitive manner via the corresponding option. 
 Textual input files will be read with the encoding specified by the command-line encoding option (UTF-8 by default), except that the encoding of XML inputs will be detected from the XML declaration. 
@@ -290,8 +290,8 @@ XLS and XLSX inputs are stored in binary.
 | TEX | No extra libraries to import | The booktabs table between ``\toprule`` and ``\bottomrule`` | Unescape ``\textbf{}``, inline math delimiters, escaped characters, and ``~`` paddings |
 | TSV | ``__import__("csv").reader`` | The first row as the column names | Parse characters according to TSV format rules |
 | TXT | No extra libraries to import | ``{"columns": [...], "results": [...]}`` written by ``str`` | Unescape characters according to Python literal rules |
-| XLS | ``xlrd`` | The first worksheet, with the first row as the column names | No character unescaping due to binary storing |
-| XLSX | ``openpyxl`` | The first worksheet, with the first row as the column names | No character unescaping due to binary storing |
+| XLS | ``xlrd`` | The first worksheet, with the first row as the column names | No character unescaping due to binary storage |
+| XLSX | ``openpyxl`` | The first worksheet, with the first row as the column names | No character unescaping due to binary storage |
 | XML | No extra libraries to import | ``<data>/<columns>/<column>`` and ``<data>/<results>/<result>/<r>`` | Unescape characters according to XML format rules |
 | YAML | ``__import__("json").loads`` | The ``columns:`` and ``results:`` sections | Unescape characters according to JSON format rules |
 | YML | ``__import__("json").loads`` | The ``columns:`` and ``results:`` sections | Unescape characters according to JSON format rules |
@@ -302,15 +302,7 @@ strings representing integers and decimals will be converted to ``int`` and ``fl
 If repeated column names are found in the input file, a ``KeyError`` object will be returned. 
 If a row contains fewer cells than the column names, the missing cells will be padded with empty strings. 
 Instead of raising base exceptions, the loader will return the base exception objects to the callers, so that the analyzer can uniformly report the loading interruptions. 
-Input files with unrecognized extensions or failed to be loaded in non-TXT recognized extensions will be loaded in the TXT format. 
-
-The following Python code can be used to test the loader. 
-
-```python
-for extension in (".csv", ".htm", ".html", ".json", ".tex", ".tsv", ".txt", ".xls", ".xlsx", ".xml", ".yaml", ".yml"):
-	mappings = Loader.load("test" + extension)
-	print(extension, mappings)
-```
+Input files with unrecognized extensions, or files that fail to load using a recognized non-TXT extension, will be loaded in the TXT format. 
 
 #### 1.1.5 Exit status
 

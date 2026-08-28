@@ -838,7 +838,7 @@ def __conductScheme(parameter:tuple|list|dict, run:int|None = None, isVerbose:bo
 			print("Is the system valid? No. The execution failed due to {0}. ".format(repr(e)))
 			print()
 	return ([
-		nString, mString, qString, lSString, lRString, runString,
+		Parser.getSchemeName(), nString, mString, qString, lSString, lRString, runString,
 		isSystemValid, isSchemeCorrect,
 		timeSetup, timeKeyGenS, timeKeyGenR, timeKeyUpdate, timeEncryption, timeTrapdoor, timeTest,
 		sizeParams, sizePkS, sizeSkS, sizePkR, sizeSkR, sizeForwardKey, sizeCipherText, sizeTrapdoor
@@ -847,7 +847,7 @@ def __conductScheme(parameter:tuple|list|dict, run:int|None = None, isVerbose:bo
 def conductScheme(parameter:tuple|list|dict, run:int|None = None, isVerbose:bool = False) -> list:
 	result, isCompleted = __conductScheme(parameter, run, isVerbose)
 	attempt = 1
-	while isCompleted and not result[7] and attempt < MAXIMUM_ATTEMPT_COUNT:
+	while isCompleted and not result[8] and attempt < MAXIMUM_ATTEMPT_COUNT:
 		result, isCompleted = __conductScheme(parameter, run, isVerbose)
 		attempt += 1
 	return result
@@ -871,7 +871,7 @@ def main() -> int:
 			
 			# Parameters #
 			parameters = ((2, 8, 16, 2, 2), (4, 16, 16, 4, 2))
-			queries = ("n", "m", "q", "lS", "lR", "runCount")
+			queries = ("scheme", "n", "m", "q", "lS", "lR", "runCount")
 			validators = ("isSystemValid", "isSchemeCorrect")
 			metrics = (
 				"Setup (s)", "KeyGenS (s)", "KeyGenR (s)", "KeyUpdate (s)", "Encryption (s)", "Trapdoor (s)", "Test (s)",
