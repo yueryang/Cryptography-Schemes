@@ -1,10 +1,12 @@
-from os import chdir, makedirs, name, walk
+from os import chdir, linesep, makedirs, name, walk
 from os.path import abspath, dirname, isdir, isfile, islink, join, split, splitdrive, splitext
 from sys import argv, exit
 from ast import literal_eval
 from codecs import lookup
 from getpass import getpass
+from importlib import import_module
 from io import BytesIO
+from math import isclose, log as ln
 from time import sleep
 from zipfile import ZipFile
 try:
@@ -469,31 +471,36 @@ class Loader:
 			return e
 	@staticmethod
 	def load(inputFilePath:str, caseSensitive:bool = False, encoding:str = "utf-8") -> dict|BaseException: # {"x":[1, 2, 3], "y":[1, 4, 9]}
-		try:
-			originalExtension = splitext(inputFilePath)[1]
-			extension = originalExtension.lower() if caseSensitive is not True else originalExtension
-			if ".csv" == extension:
-				return Loader.__loadDelimited(inputFilePath, delimiter = ",", encoding = encoding)
-			elif extension in (".htm", ".html"):
-				return Loader.__loadHTML(inputFilePath, encoding = encoding)
-			elif ".json" == extension:
-				return Loader.__loadJSON(inputFilePath, encoding = encoding)
-			elif ".tex" == extension:
-				return Loader.__loadTEX(inputFilePath, encoding = encoding)
-			elif ".tsv" == extension:
-				return Loader.__loadDelimited(inputFilePath, delimiter = '\t', encoding = encoding)
-			elif ".xls" == extension:
-				return Loader.__loadXLS(inputFilePath)
-			elif ".xlsx" == extension:
-				return Loader.__loadXLSX(inputFilePath)
-			elif ".xml" == extension:
-				return Loader.__loadXML(inputFilePath)
-			elif extension in (".yaml", ".yml"):
-				return Loader.__loadYAML(inputFilePath, encoding = encoding)
+		originalExtension = splitext(inputFilePath)[1]
+		extension = originalExtension.lower() if caseSensitive is not True else originalExtension
+		if ".csv" == extension:
+			mappings = Loader.__loadDelimited(inputFilePath, delimiter = ",", encoding = encoding)
+		elif extension in (".htm", ".html"):
+			mappings = Loader.__loadHTML(inputFilePath, encoding = encoding)
+		elif ".json" == extension:
+			mappings = Loader.__loadJSON(inputFilePath, encoding = encoding)
+		elif ".tex" == extension:
+			mappings = Loader.__loadTEX(inputFilePath, encoding = encoding)
+		elif ".tsv" == extension:
+			mappings = Loader.__loadDelimited(inputFilePath, delimiter = '\t', encoding = encoding)
+		elif ".xls" == extension:
+			mappings = Loader.__loadXLS(inputFilePath)
+		elif ".xlsx" == extension:
+			mappings = Loader.__loadXLSX(inputFilePath)
+		elif ".xml" == extension:
+			mappings = Loader.__loadXML(inputFilePath)
+		elif extension in (".yaml", ".yml"):
+			mappings = Loader.__loadYAML(inputFilePath, encoding = encoding)
+		else:
+			return Loader.__loadTXT(inputFilePath, encoding = encoding)
+		if isinstance(mappings, dict):
+			return mappings
+		else:
+			currentMappings = Loader.__loadTXT(inputFilePath, encoding = encoding)
+			if isinstance(currentMappings, dict):
+				return currentMappings
 			else:
-				return Loader.__loadTXT(inputFilePath, encoding = encoding)
-		except BaseException as e:
-			return e
+				return mappings
 
 class Drawer:
 	__Colors = ("blue", "red", "green", "black", "orange", "purple", "cyan", "magenta", "gray", "brown", "pink", "lime", "navy", "teal", "aqua", "maroon", "olive", "gold", "silver")
@@ -503,42 +510,68 @@ class Drawer:
 	__plt = None
 	__LabelFontSize = 14
 	__LegendFontSize = 12
+	__escapeTEX = lambda x:"\\textbackslash{}".join(
+		string.replace("#", "\\#").replace("$", "\\$").replace("%", "\\%").replace("&", "\\&").replace("_", "\\_").replace("{", "\\{").replace("}", "\\}")
+		.replace("<", "\\textless{}").replace(">", "\\textgreater{}").replace("^", "\\textasciicircum{}").replace("~", "\\textasciitilde{}")
+		for string in "".join(character for character in str(x) if ' ' <= character <= '~').split("\\")
+	)
 	@staticmethod
 	def __checkValues(values:tuple|list) -> bool:
 		return isinstance(values, (tuple, list)) and values and all(isinstance(value, (int, float, str)) for value in values)
 	@staticmethod
-	def __checkNumbers(numbers:tuple|list) -> bool:
-		return isinstance(numbers, (tuple, list)) and numbers and all(isinstance(number, (int, float)) for number in numbers)
-	@staticmethod
 	def configure() -> bool|BaseException:
 		try:
 			if Drawer.__plt is None:
-				from matplotlib import pyplot as plt
-				Drawer.__plt = plt
+				Drawer.__plt = import_module("matplotlib.pyplot")
 				Drawer.__plt.rcParams["font.family"] = "Times New Roman"
-				Drawer.__plt.rcParams["font.size"] = 12##########
+				Drawer.__plt.rcParams["font.size"] = 12
 				Drawer.__plt.rcParams["mathtext.fontset"] = "custom"
 				Drawer.__plt.rcParams["mathtext.rm"] = "Times New Roman"
-				Drawer.__plt.rcParams["mathtext.it"] = "Times New Roman:italic"
 				Drawer.__plt.rcParams["mathtext.bf"] = "Times New Roman:bold"
+				Drawer.__plt.rcParams["mathtext.it"] = "Times New Roman:italic"
+				Drawer.__plt.rcParams["mathtext.bfit"] = "Times New Roman:bold:italic"
 			return True
 		except BaseException as e:
 			return e
 	@staticmethod
+	def __checkNumbers(numbers:tuple|list) -> bool:
+		return isinstance(numbers, (tuple, list)) and numbers and all(isinstance(number, (int, float)) for number in numbers)
+	@staticmethod
+	def __checkLogarithmicSpacing(xValues:tuple|list|set) -> bool:
+		if isinstance(xValues, (tuple, list, set)) and xValues and all(isinstance(xValue, (int, float)) for xValue in xValues):
+			uniqueValues = sorted(set(xValues))
+			if len(uniqueValues) >= 3 and uniqueValues[0] > 0:
+				differences = tuple(b - a for a, b in zip(uniqueValues, uniqueValues[1:]))
+				if min(differences) > 0:
+					linearSpread = max(differences) / min(differences)
+					if linearSpread >= 10: # clearly non-uniform in the linear domain
+						logarithms = tuple(ln(uniqueValue) for uniqueValue in uniqueValues)
+						logarithmicDifferences = tuple(b - a for a, b in zip(logarithms, logarithms[1:]))
+						return min(logarithmicDifferences) > 0 and max(logarithmicDifferences) / min(logarithmicDifferences) < linearSpread
+		return False
+	@staticmethod
 	def draw(curves:tuple|list, xLabelName:str|None = None, yLabelName:str|None = None) -> bytes|BaseException:
-		try:
-			if isinstance(curves, (tuple, list)): # curves = ({"x":(1, 2, 3), "y":(1, 4, 9), "label":"$y = x^2$"}, {"x":(1, 2, 3), "y":(1, 8, 27), "label":"$y = x^3$"})
+		if Drawer.__plt is None:
+			configurationStatus = Drawer.configure()
+			if configurationStatus is not True:
+				return configurationStatus
+		if isinstance(curves, (tuple, list)) and curves: # curves = ({"x":(1, 2, 3), "y":(1, 4, 9), "label":"$y = x^2$"}, {"x":(1, 2, 3), "y":(1, 8, 27), "label":"$y = x^3$"})
+			try:
+				xValues = set()
 				for curve in curves:
 					if (
-						isinstance(curve, dict) and "x" in curve and Drawer.__checkNumbers(curve["x"])
+						isinstance(curve, dict) and "x" in curve and Drawer.__checkNumbers(curve["x"]) and len(set(curve["x"])) == len(curve["x"])
 						and "y" in curve and Drawer.__checkNumbers(curve["y"]) and len(curve["x"]) == len(curve["y"])
 					):
+						xValues.update(curve["x"])
 						x, y = zip(*sorted(zip(curve["x"], curve["y"]))) # sort $x$ and $y$ by ascending $x$ values
 						keywordArguments = {key:value for key, value in curve.items() if key in ("color", "marker", "label")}
 						try:
 							Drawer.__plt.plot(x, y, **keywordArguments)
 						except Exception:
 							Drawer.__plt.plot(x, y)
+				if Drawer.__checkLogarithmicSpacing(xValues):
+					Drawer.__plt.xscale("log")
 				if isinstance(xLabelName, str):
 					Drawer.__plt.xlabel(xLabelName, fontsize = Drawer.__LabelFontSize)
 				if isinstance(yLabelName, str):
@@ -551,12 +584,138 @@ class Drawer:
 					Drawer.__plt.savefig(buffer, format = "pdf")
 					Drawer.__plt.close()
 					return buffer.getvalue()
-			else:
-				return TypeError("The curves should be a tuple or a list of dictionaries. ")
-		except BaseException as e:
-			return e
+			except BaseException as e:
+				return e
+		else:
+			return TypeError("The curves should be a tuple or a list containing at least one dictionary. ")
 	@staticmethod
-	def drawMappings(mappings:dict, independentVariables:tuple|list, dependentVariables:tuple|list, groupingVariables:tuple|list) -> dict|BaseException:
+	def __tuple2str(items:tuple|list, itemPrefix:str = "", itemSuffix:str = "") -> str:
+		try:
+			if len(items) >= 3:
+				return ", ".join("{0}{1}{2}".format(itemPrefix, item, itemSuffix) for item in items[:-1]) + ", and " + "{0}{1}{2}".format(itemPrefix, items[-1], itemSuffix)
+			elif len(items) >= 2:
+				return "{0}{1}{2} and {0}{3}{2}".format(itemPrefix, items[0], itemSuffix, items[1])
+			elif len(items) == 1:
+				return "{0}{1}{2}".format(itemPrefix, items[0], itemSuffix)
+			else:
+				return ""
+		except:
+			return ""
+	@staticmethod
+	def __sanitizeWord(word:str) -> str:
+		try:
+			return "".join(character for character in word if 'A' <= character <= 'Z' or '-' == character or 'a' <= character <= 'z')
+		except:
+			return ""
+	@staticmethod
+	def __getPlural(singular:str) -> str:
+		word = Drawer.__sanitizeWord(singular)
+		return word + "s" if word else ""
+	@staticmethod
+	def __judgeConsumptionLikeVariableName(variableName:str) -> bool:
+		if isinstance(variableName, str):
+			lowercaseVariableName = variableName.lower()
+			return lowercaseVariableName.endswith(
+				("(ns)", "(ms)", "(s)", "(min)", "(h)", "(bit)", "(b)", "(kb)", "(mb)", "(gb)", "(tb)", "(kib)", "(mib)", "(gib)", "(tib)")
+			) or "consumption" in lowercaseVariableName
+		else:
+			return False
+	@staticmethod
+	def __getFigureLabel(figureFilePath:str) -> str:
+		if isinstance(figureFilePath, str):
+			buffer = []
+			for character in figureFilePath:
+				if '-' == character or '0' <= character <= '9' or 'A' <= character <= 'Z' or '_' == character or 'a' <= character <= 'z':
+					buffer.append(character)
+				else:
+					break
+			return "".join(buffer) if buffer else "_"
+		else:
+			return "_"
+	@staticmethod
+	def __summarizeCurves(curves:tuple|list, figureFilePath:str, dependentVariableName:str, groupingVariableName:str, controlledVariableValueMappings:dict, independentVariableName:str) -> str:
+		if (
+			isinstance(curves, (tuple, list)) and curves and isinstance(figureFilePath, str)
+			and all('-' <= character <= '9' or 'A' <= character <= 'Z' or '_' == character or 'a' <= character <= 'z' for character in figureFilePath)
+		): # curves = ({"x":(1, 2, 3), "y":(1, 4, 9), "label":"$y = x^2$"}, {"x":(1, 2, 3), "y":(1, 8, 27), "label":"$y = x^3$"})
+			labelMappings = {}
+			xValues = set()
+			if isinstance(dependentVariableName, str) and isinstance(groupingVariableName, str): # otherwise disable relative performance statements
+				for curve in curves:
+					if (
+						isinstance(curve, dict) and "x" in curve and Drawer.__checkNumbers(curve["x"]) and len(set(curve["x"])) == len(curve["x"])
+						and "y" in curve and Drawer.__checkNumbers(curve["y"]) and len(curve["x"]) == len(curve["y"]) and "label" in curve and isinstance(curve["label"], str)
+					):
+						if curve["label"] in labelMappings: # disable relative performance statements
+							labelMappings.clear()
+							break
+						else:
+							labelMappings[curve["label"]] = sum(curve["y"])
+							xValues.update(curve["x"]) # already checked for a non-empty tuple or a non-empty list before
+			if labelMappings:
+				if len(labelMappings) >= 2:
+					mainStatements = "Comparison of the {0} {1}".format(
+						Drawer.__tuple2str(tuple(Drawer.__sanitizeWord(key) for key in labelMappings.keys())), Drawer.__getPlural(groupingVariableName)
+					)
+				else:
+					mainStatements = "Plot of the {0} {1}".format(Drawer.__sanitizeWord(next(iter(labelMappings.keys()))), groupingVariableName)
+				if isinstance(controlledVariableValueMappings, dict):
+					mainStatements += Drawer.__tuple2str(tuple(
+						", with {0} = {1}".format(key, value) for key, value in controlledVariableValueMappings.items() if isinstance(key, str) and isinstance(value, (str, int, float))
+					))
+				if isinstance(independentVariableName, str):
+					if len(xValues) >= 2:
+						mainStatements += ", evaluated at different {0}".format(Drawer.__getPlural(independentVariableName))
+					elif len(xValues) == 1:
+						mainStatements += ", evaluated when {0} is {1}".format(Drawer.__sanitizeWord(independentVariableName), next(iter(xValues)))
+					else:
+						mainStatements += ", evaluated at the same {0}".format(Drawer.__sanitizeWord(independentVariableName))
+				mainStatements += ". "
+				consumptionLikeVariable = Drawer.__judgeConsumptionLikeVariableName(dependentVariableName)
+				optimalValue = min(labelMappings.values()) if consumptionLikeVariable else max(labelMappings.values())
+				optimalKeys = tuple(key for key, value in labelMappings.items() if isclose(value, optimalValue))
+				optimalKeyLength = len(optimalKeys)
+				if len(curves) == optimalKeyLength: # no ${groupingVariableName}s are suboptimal
+					if 1 == optimalKeyLength:
+						relativePerformanceStatements = ""
+					elif 2 == optimalKeyLength:
+						relativePerformanceStatements = "Both {0} are optimal. ".format(Drawer.__getPlural(groupingVariableName))
+					else:
+						relativePerformanceStatements = "All the {0} are optimal. ".format(Drawer.__getPlural(groupingVariableName))
+				elif optimalKeyLength >= 2:
+					if consumptionLikeVariable:
+						relativePerformanceMappings = {label:(labelMappings[label] - optimalValue) / labelMappings[label] for label in labelMappings.keys() if label not in optimalKeys}
+					else:
+						relativePerformanceMappings = {label:(optimalValue - labelMappings[label]) / labelMappings[label] for label in labelMappings.keys() if label not in optimalKeys}
+					relativePerformanceStatements = "The {0} {1} outperform {2} by {3}{4}. ".format(
+						Drawer.__tuple2str(optimalKeys), Drawer.__getPlural(groupingVariableName), Drawer.__tuple2str(tuple(relativePerformanceMappings.keys())), 
+						Drawer.__tuple2str(tuple(relativePerformanceMappings.values())), ", respectively" if len(relativePerformanceMappings) >= 2 else ""
+					)
+				elif 1 == optimalKeyLength:
+					if consumptionLikeVariable:
+						relativePerformanceMappings = {label:(labelMappings[label] - optimalValue) / labelMappings[label] for label in labelMappings.keys() if label not in optimalKeys}
+					else:
+						relativePerformanceMappings = {label:(optimalValue - labelMappings[label]) / labelMappings[label] for label in labelMappings.keys() if label not in optimalKeys}
+					relativePerformanceStatements = "The {0} {1} outperforms {2} by {3}{4}. ".format(
+						Drawer.__tuple2str(optimalKeys), groupingVariableName, Drawer.__tuple2str(tuple(relativePerformanceMappings.keys())), 
+						Drawer.__tuple2str(tuple(relativePerformanceMappings.values())), ", respectively" if len(relativePerformanceMappings) >= 2 else ""
+					)
+				else:
+					relativePerformanceStatements = ""
+				caption = mainStatements + relativePerformanceStatements
+			else:
+				caption = ""
+			return linesep.join((
+				"\\begin{figure}[htbp]", 
+				"\t\\centerline{{\\includegraphics[width=\\columnwidth]{{{0}}}}}".format(figureFilePath), 
+				"\t\\caption{{{0}}}".format(caption), 
+				"\t\\label{{fig:{0}}}".format(Drawer.__getFigureLabel(figureFilePath)), 
+				"\\end{figure}"
+			))
+		else:
+			return ""
+	@staticmethod
+	def drawMappings(mappings:dict, independentVariables:tuple|list, dependentVariables:tuple|list, groupingVariables:tuple|list, encoding:str = Parser.getDefaultEncoding()) -> tuple|BaseException:
 		if isinstance(mappings, dict) and all(isinstance(key, str) and Drawer.__checkValues(value) for key, value in mappings.items()) and len(set(len(value) for value in mappings.values())) == 1:
 			variables = tuple(mappings.keys())
 			variableLength = len(variables)
@@ -613,7 +772,7 @@ class Drawer:
 						seenVariableNames.add(dependentVariableName)
 				for groupingVariableName in groupingVariableNames:
 					if groupingVariableName in seenVariableNames:
-						return ValueError("The group variable {0} is repeated. ".format(repr(groupingVariableName)))
+						return ValueError("The grouping variable {0} is repeated. ".format(repr(groupingVariableName)))
 					else:
 						seenVariableNames.add(groupingVariableName)
 				del seenVariableNames
@@ -622,7 +781,10 @@ class Drawer:
 					if configurationStatus is not True:
 						return configurationStatus
 				valueLength = len(next(iter(mappings.values())))
-				byteMappings = {}
+				byteMappings = {"main.tex":linesep.join((
+					"\\documentclass[a4paper]{article}", "\\setlength{\\parindent}{0pt}", "\\usepackage{amsmath,amssymb}", 
+					"\\usepackage{bm}", "\\usepackage{graphicx}", "\\usepackage{booktabs}", "", "\\begin{document}", ""
+				))}
 				for groupingVariableName in groupingVariableNames:
 					groupingVariableIndex = variables.index(groupingVariableName) # for naming purposes
 					groupingVariableValues = []
@@ -636,6 +798,8 @@ class Drawer:
 						enumerationIndex, groupingVariableValue
 					) in enumerate(groupingVariableValues)} # finish
 					for independentVariableName in independentVariableNames:
+						if not Drawer.__checkNumbers(mappings[independentVariableName]):
+							continue
 						independentVariableIndex = variables.index(independentVariableName) # for naming purposes
 						controlledVariableNames = tuple(
 							controlledVariableName for controlledVariableName in independentVariableNames if controlledVariableName != independentVariableName
@@ -648,7 +812,7 @@ class Drawer:
 							).append(valueIndex) # finish
 						for dependentVariableName in dependentVariableNames:
 							dependentVariableIndex = variables.index(dependentVariableName) # for naming purposes
-							for curveGroupIndex, valueIndexGroup in enumerate(valueIndexGroups.values()):
+							for curveGroupIndex, (controlledValues, valueIndexGroup) in enumerate(valueIndexGroups.items()):
 								curveMappings = {}
 								for valueIndex in valueIndexGroup:
 									groupingVariableValue = mappings[groupingVariableName][valueIndex]
@@ -668,11 +832,24 @@ class Drawer:
 											elif 1 == innerValueLength:
 												curves[-1].setdefault("x", []).append(innerKey)
 												curves[-1].setdefault("y", []).append(innerValue[0])
-									if not ("x" in curves[-1] and curves[-1]["x"] and "y" in curves[-1] and curves[-1]["y"]):
+									if not ("x" in curves[-1] and len(curves[-1]["x"]) >= 2 and "y" in curves[-1] and len(curves[-1]["y"]) >= 2):
 										del curves[-1]
-								byteMappings["x{0}y{1}{2}g{3}".format(independentVariableIndex, dependentVariableIndex, "".join(
+								figureFilePath = "x{0}y{1}{2}g{3}.pdf".format(independentVariableIndex, dependentVariableIndex, "".join(
 									"c{0}".format(controlledVariableIndex) for controlledVariableIndex in controlledVariableIndexes
-								), curveGroupIndex)] = Drawer.draw(curves, xLabelName = independentVariableName, yLabelName = dependentVariableName)
+								), curveGroupIndex)
+								byteMappings[figureFilePath] = Drawer.draw(curves, xLabelName = independentVariableName, yLabelName = dependentVariableName)
+								if isinstance(byteMappings[figureFilePath], bytes):
+									figureTEX = Drawer.__summarizeCurves(
+										curves, figureFilePath, independentVariableName, dependentVariableName, groupingVariableName, 
+										tuple(zip(controlledVariableNames, controlledValues))
+									)
+									if isinstance(figureTEX, str) and figureTEX:
+										byteMappings["main.tex"] += figureTEX.strip() + linesep * 2
+				byteMappings["main.tex"] += "\\end{document}"
+				try:
+					byteMappings["main.tex"] = byteMappings["main.tex"].encode(encoding)
+				except:
+					byteMappings["main.tex"] = byteMappings["main.tex"].encode(Parser.getDefaultEncoding(), errors = "ignore")
 				return byteMappings
 			else:
 				return ValueError("Independent, dependent and group variables should not be empty. ")
@@ -684,6 +861,7 @@ class Analyzer:
 		self.__inputFilePaths = inputFilePaths
 		self.__outputFilePath = outputFilePath
 		self.__caseSensitive = caseSensitive is True
+		self.__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
 		self.__encoding = encoding if isinstance(encoding, str) else Parser.getDefaultEncoding()
 	def __load(self:tuple|list|str) -> dict|BaseException:
 		if isinstance(self.__inputFilePaths, (tuple, list)):
@@ -731,14 +909,19 @@ class Analyzer:
 					groupingVariableIndex = lowercaseVariables.index(possibleGroupingVariableName)
 					break
 			else:
-				return ValueError("Failed to find a suitable grouping key in the mappings. ")
-			if "runCount" in variables:
-				runCountVariableIndex = variables.index("runCount")
+				return ValueError("Failed to find a suitable grouping variable in the mappings. ")
+			for possibleRunCountVariableName in ("runcount", "run"):
+				if possibleRunCountVariableName in lowercaseVariables:
+					runCountVariableIndex = lowercaseVariables.index(possibleRunCountVariableName)
+					break
 			else:
-				return ValueError("Failed to locate the run count key in mappings. ")
-			dependentVariableIndexes = tuple(variableIndex for variableIndex, variableName in enumerate(variables) if (
-				variableName.endswith("(s)") or (variableName.endswith("(B)") and not variableName.startswith("elementOf")) or (variableName.startswith("$") and variableName.endswith("$"))
+				return ValueError("Failed to find a suitable run count variable in the mappings. ")
+			dependentVariableIndexes = tuple(variableIndex for variableIndex, variableName in enumerate(variables[runCountVariableIndex + 1:], start = runCountVariableIndex + 1) if (
+				variableName.endswith("(s)") or (variableName.endswith("(B)") and not variableName.startswith("elementOf"))
+				or (len(variableName) >= 3 and variableName.startswith("$") and variableName[1] != '$' and variableName[-2] != '$' and variableName.endswith("$"))
 			))
+			if groupingVariableIndex in dependentVariableIndexes:
+				return ValueError("The grouping variable should not be a dependent variable. ")
 			if dependentVariableIndexes and runCountVariableIndex < dependentVariableIndexes[0]:
 				independentVariableIndexes = tuple(variableIndex for variableIndex in range(runCountVariableIndex) if variableIndex != groupingVariableIndex)
 				validationVariableIndexes = tuple(variableIndex for variableIndex in range(runCountVariableIndex, dependentVariableIndexes[0]))
@@ -758,12 +941,11 @@ class Analyzer:
 						makedirs(outputDirectoryPath, exist_ok = True)
 					byteMappings = Drawer.drawMappings(mappings, independentVariableIndexes, dependentVariableIndexes, groupingVariableIndex)
 					if isinstance(byteMappings, dict):
-						__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
 						compressionMappings = {}
-						with ZipFile(self.__outputFilePath if ".zip" == __getFileExtension(self.__outputFilePath) else self.__outputFilePath + ".zip", "w") as zf:
+						with ZipFile(self.__outputFilePath if ".zip" == self.__getFileExtension(self.__outputFilePath) else self.__outputFilePath + ".zip", "w") as zf:
 							for key, value in byteMappings.items():
 								if isinstance(key, str) and isinstance(value, bytes):
-									zf.writestr(key if ".pdf" == __getFileExtension(key) else key + ".pdf", value)
+									zf.writestr(key, value)
 								else:
 									compressionMappings[key] = value
 						return compressionMappings if compressionMappings else True
@@ -777,17 +959,11 @@ class Analyzer:
 			return ValueError("The mappings loaded are invalid. ")
 
 class Analyzers:
-	__escapeTEX = lambda x:"\\textbackslash{}".join(
-		string.replace("#", "\\#").replace("$", "\\$").replace("%", "\\%").replace("&", "\\&").replace("_", "\\_").replace("{", "\\{").replace("}", "\\}")
-		.replace("<", "\\textless{}").replace(">", "\\textgreater{}").replace("^", "\\textasciicircum{}").replace("~", "\\textasciitilde{}")
-		for string in "".join(character for character in str(x) if ' ' <= character <= '~').split("\\")
-	)#####
 	__DefaultCompilationTimeout = 10#####
 	def __init__(self:object, *units:tuple, caseSensitive:bool = False, encoding:str = Parser.getDefaultEncoding(), formatString:str = Parser.getDefaultOutput()) -> object:
 		self.__units = []
 		self.__analyzers = []
 		self.__caseSensitive = caseSensitive is True
-		self.__getFileExtension = (lambda x:splitext(x)[1]) if self.__caseSensitive else (lambda x:splitext(x)[1].lower())
 		self.__encoding = encoding if isinstance(encoding, str) else Parser.getDefaultEncoding()
 		self.__formatString = formatString if isinstance(formatString, str) else Parser.getDefaultOutput()
 		self.updateUnits(*units if units else ".")

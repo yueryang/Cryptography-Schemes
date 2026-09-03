@@ -943,8 +943,8 @@ class SchemeCoefficientComputation:
 	__DefaultHint = "only applicable to symmetric groups"
 	def __init__(self:object, *paths:tuple) -> object: # This scheme is a coefficient computation API comparator. 
 		self.__filePaths = []
-		self.__symmetricCurveNames = ("SS512", "SS1024")
-		self.__curveNames = ("MNT201", "MNT224", "BN254") + self.__symmetricCurveNames
+		self.__symmetricCurveParameters = (("SS512", 128), ("SS512", 256), ("SS512", 512), ("SS1024", 512), ("SS1024", 1024))
+		self.__curveParameters = ("MNT201", "MNT224", "BN254") + self.__symmetricCurveParameters
 		self.updateFilePaths(*paths)
 	def updateFilePaths(self:object, *paths:tuple) -> int:
 		originalLength, stack = len(self.__filePaths), list(reversed(paths))
@@ -981,22 +981,39 @@ class SchemeCoefficientComputation:
 	def __getSolutionName(solution:object, offset:int|None = 1) -> str:
 		solutionName = getattr(solution, "__qualname__", getattr(solution, "__name__", repr(solution)))
 		return ".".join(solutionName.split(".")[offset if isinstance(offset, int) and offset >= 0 else None:])
+	@staticmethod
+	def __parseCurveParameter(curveParameter:tuple|list|dict|str) -> tuple: # (curveName, securityParameter), aligned with the parsing in other ``Scheme*/Scheme*.py``
+		curveName, securityParameter = "N/A", None # ``None`` indicates using the default security parameter of the curve
+		if isinstance(curveParameter, (tuple, list)):
+			if len(curveParameter) >= 1 and isinstance(curveParameter[0], str) and curveParameter[0].isalnum():
+				curveName = curveParameter[0]
+			if len(curveParameter) >= 2 and isinstance(curveParameter[1], int) and curveParameter[1] >= 1:
+				securityParameter = curveParameter[1]
+		elif isinstance(curveParameter, dict):
+			if "curveName" in curveParameter and isinstance(curveParameter["curveName"], str) and curveParameter["curveName"].isalnum():
+				curveName = curveParameter["curveName"]
+			if "securityParameter" in curveParameter and isinstance(curveParameter["securityParameter"], int) and curveParameter["securityParameter"] >= 1:
+				securityParameter = curveParameter["securityParameter"]
+		elif isinstance(curveParameter, str) and curveParameter.isalnum():
+			curveName = curveParameter
+		return (curveName, securityParameter)
 	def __conductBasicScheme(self:object, r:int = __DefaultRunCount, isVerbose:bool = True) -> list:
 		groups, schemeName, runCount, results = [], Parser.getSchemeName(), r if isinstance(r, int) and r >= 1 else SchemeCoefficientComputation.__DefaultRunCount, []
-		for curveName in self.__curveNames:
+		for curveParameter in self.__curveParameters:
+			curveName, securityParameter = SchemeCoefficientComputation.__parseCurveParameter(curveParameter)
 			try:
-				groups.append(PairingGroup(curveName))
+				groups.append((curveName, PairingGroup(curveName, secparam = securityParameter) if isinstance(securityParameter, int) else PairingGroup(curveName)))
 			except Exception as e: # never catch ``KeyboardInterrupt`` here
 				if isVerbose is not False:
 					print("Basic: Failed to initialize the curve with name {0} due to {1}. ".format(repr(curveName), repr(e)))
 				continue
 		if isVerbose is not False:
 			print("Scheme: {0}".format(schemeName))
-			print("Curves: {0}".format([(group.groupType(), group.secparam) for group in groups]))
+			print("Curves: {0}".format([(group.groupType(), group.secparam) for curveName, group in groups]))
 			print("One: {0}".format(("reliable", "unreliable")))
 			print("Solution: {0}".format(tuple(self.__getSolutionName(solution) for solution in Solutions.Constant2Highest.getAllSolutions() + Solutions.Highest2Constant.getAllSolutions())))
 			print("runCount: {0}".format(runCount))
-		for group in groups:
+		for curveName, group in groups:
 			roots = [group.init(ZR, 2), group.init(ZR, 3), group.init(ZR, 5)]
 			k = group.init(ZR, 7)
 			answer2Lowest2Highest = (group.init(ZR, -23), group.init(ZR, 31), group.init(ZR, -10)) # initialize an ``x`` without ``1 * `` with Horner's Method when computing polynomials
@@ -1106,7 +1123,7 @@ class SchemeCoefficientComputation:
 				if isVerbose is not False:
 					print("Device: Failed to parse {0} due to {1}. ".format(repr(filePath), repr(e)))
 				continue
-			curveNames = self.__symmetricCurveNames if SchemeCoefficientComputation.__containingSymmetricHint(sourceTree) else self.__curveNames
+			curveParameters = self.__symmetricCurveParameters if SchemeCoefficientComputation.__containingSymmetricHint(sourceTree) else self.__curveParameters
 			for one in (True, False):
 				for solution in Solutions.Constant2Highest.getAllSolutions(isCombinationEnabled = False, isNumPyEnabled = False):
 					try:
@@ -1115,8 +1132,10 @@ class SchemeCoefficientComputation:
 						if isVerbose is not False:
 							print("Device: Failed to patch {0} with {1} due to {2}. ".format(repr(filePath), self.__getSolutionName(solution), repr(e)))
 						continue
-					for curveName in curveNames:
-						securityParameter = PairingGroup(curveName).secparam
+					for curveParameter in curveParameters:
+						curveName, securityParameter = SchemeCoefficientComputation.__parseCurveParameter(curveParameter)
+						if not isinstance(securityParameter, int):
+							securityParameter = PairingGroup(curveName).secparam
 						if isVerbose is not False:
 							print("Scheme: {0}".format(filePath))
 							print("Curve: ({0}, {1})".format(curveName, securityParameter))
@@ -1127,7 +1146,7 @@ class SchemeCoefficientComputation:
 							correctness = 0
 							startTime = perf_counter()
 							for run in range(1, runCount + 1):
-								result = conduct(curveName, run = run, isVerbose = False)
+								result = conduct(curveParameter, run = run, isVerbose = False)
 								correctness += self.__isSchemeResultCorrect(result)
 							endTime = perf_counter()
 							averageTimeConsumption = (endTime - startTime) / runCount
